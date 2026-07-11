@@ -266,7 +266,7 @@ button:disabled {
 .intro-lede {
   color: #35332e;
   font-family: var(--serif);
-  font-size: clamp(1.16rem, 1.7vw, 1.55rem);
+  font-size: clamp(1.05rem, 1.45vw, 1.3rem);
   line-height: 1.48;
   margin: 0;
   max-width: 630px;
