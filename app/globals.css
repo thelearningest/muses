@@ -1203,6 +1203,7 @@ button:disabled {
 
 .principle-reward {
   background: var(--ink);
+  container-type: inline-size;
   color: var(--white);
   min-height: 100%;
   padding: 2rem;
@@ -1219,8 +1220,13 @@ button:disabled {
 }
 
 .principle-reward h2 {
-  font-size: 2.4rem;
+  font-size: clamp(1.55rem, 15cqi, 2.4rem);
+  letter-spacing: -0.05em;
+  line-height: 0.98;
   margin-bottom: 1rem;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 
 .principle-reward p {
@@ -1744,6 +1750,7 @@ button:disabled {
 
   .principle-reward {
     min-height: 470px;
+    padding: clamp(1.35rem, 7vw, 2rem);
   }
 
   .choice {
