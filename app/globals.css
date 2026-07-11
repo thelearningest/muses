@@ -160,6 +160,48 @@ button:disabled {
   padding: 0;
 }
 
+.ambient-audio {
+  display: none;
+}
+
+.sound-toggle {
+  align-items: center;
+  align-self: stretch;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--rule);
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 700;
+  gap: 0.7rem;
+  justify-content: center;
+  letter-spacing: 0.08em;
+  min-height: 44px;
+  padding: 0.8rem 1.2rem;
+  text-transform: uppercase;
+}
+
+.sound-toggle-state {
+  align-items: center;
+  border: 1px solid currentColor;
+  display: inline-flex;
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  height: 24px;
+  justify-content: center;
+  min-width: 34px;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.sound-toggle[aria-pressed="true"] .sound-toggle-state,
+.sound-toggle:not(:disabled):hover .sound-toggle-state {
+  background: var(--yellow);
+  border-color: var(--yellow);
+  color: var(--ink);
+}
+
 /* Intro */
 
 .intro-shell {
@@ -177,10 +219,24 @@ button:disabled {
   padding: 1rem clamp(1.25rem, 4vw, 4rem);
 }
 
+.intro-header-tools,
+.completion-header-tools {
+  align-items: stretch;
+  align-self: stretch;
+  display: flex;
+}
+
+.intro-header .sound-toggle,
+.completion-header .sound-toggle {
+  border-left-color: #55534d;
+}
+
 .intro-edition {
+  align-self: center;
   font-family: var(--mono);
   font-size: 0.68rem;
   letter-spacing: 0.1em;
+  padding-right: clamp(1rem, 3vw, 2.25rem);
   text-transform: uppercase;
 }
 
@@ -260,6 +316,17 @@ button:disabled {
   line-height: 1.5;
   margin: 1.4rem 0 0;
   max-width: 520px;
+}
+
+.source-note a {
+  color: inherit;
+  text-decoration-color: var(--rule);
+  text-underline-offset: 0.18em;
+}
+
+.source-note a:hover {
+  color: var(--ink);
+  text-decoration-color: var(--ink);
 }
 
 .intro-artifact {
@@ -1432,11 +1499,13 @@ button:disabled {
   padding: 1rem clamp(1.25rem, 4vw, 4rem);
 }
 
-.completion-header > span {
+.completion-status {
+  align-self: center;
   color: #aba89f;
   font-family: var(--mono);
   font-size: 0.65rem;
   letter-spacing: 0.09em;
+  padding-right: clamp(1rem, 3vw, 2.25rem);
   text-transform: uppercase;
 }
 
@@ -1626,7 +1695,7 @@ button:disabled {
   }
 
   .intro-edition,
-  .completion-header > span {
+  .completion-status {
     max-width: 180px;
     text-align: right;
   }
@@ -1682,8 +1751,21 @@ button:disabled {
 
   .xp-meter {
     border-left: 0;
-    min-width: 150px;
+    min-width: 112px;
     padding: 0.6rem 0;
+  }
+
+  .museum-header .sound-toggle {
+    border-left: 0;
+    padding: 0.5rem 0 0.5rem 0.4rem;
+  }
+
+  .museum-header .sound-toggle-state {
+    min-width: 30px;
+  }
+
+  .sound-toggle-label {
+    display: none;
   }
 
   .quest-wayfinder {
@@ -1833,6 +1915,11 @@ button:disabled {
 }
 
 @media (max-width: 390px) {
+  .intro-edition,
+  .completion-status {
+    display: none;
+  }
+
   .intro-facts,
   .completion-score {
     gap: 0.7rem;

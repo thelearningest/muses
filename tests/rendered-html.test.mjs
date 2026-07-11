@@ -49,6 +49,9 @@ test("ships six quests, local progress, and the original artifact", async () => 
 
   assert.equal((game.match(/number: "0[1-6]"/g) ?? []).length, 6);
   assert.match(game, /design-warden-progress:v1/);
+  assert.match(game, /design-warden-audio:v1/);
+  assert.match(game, /unsolved-investigation\.(ogg|mp3)/);
+  assert.match(game, /Turn background music (on|off)/);
   assert.match(game, /false-handle-gate\.png/);
   assert.match(game, /prefers-reduced-motion|Principle journal/i);
   assert.match(page, /<Game \/>/);
@@ -57,6 +60,9 @@ test("ships six quests, local progress, and the original artifact", async () => 
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 
   await access(new URL("../public/assets/false-handle-gate.png", import.meta.url));
+  await access(new URL("../public/audio/unsolved-investigation.ogg", import.meta.url));
+  await access(new URL("../public/audio/unsolved-investigation.mp3", import.meta.url));
+  await access(new URL("../public/audio/unsolved-investigation.LICENSE.txt", import.meta.url));
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
   await assert.rejects(access(new URL("public/favicon.svg", root)));
 });

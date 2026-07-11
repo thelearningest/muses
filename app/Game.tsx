@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type Phase = "inspect" | "diagnose" | "repair" | "reward" | "complete";
 type FeedbackTone = "neutral" | "good" | "bad";
+type AudioPreference = "on" | "off";
 type ArtifactType =
   | "gate"
   | "switchboard"
@@ -48,6 +49,8 @@ type Progress = {
 };
 
 const STORAGE_KEY = "design-warden-progress:v1";
+const AUDIO_PREFERENCE_KEY = "design-warden-audio:v1";
+const AMBIENT_VOLUME = 0.1;
 const MAX_XP = 500;
 const PHASES: Phase[] = [
   "inspect",
@@ -730,10 +733,36 @@ function PrincipleJournal({
   );
 }
 
+function SoundToggle({
+  enabled,
+  disabled,
+  onToggle,
+}: {
+  enabled: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      className="sound-toggle"
+      type="button"
+      aria-label={enabled ? "Turn background music off" : "Turn background music on"}
+      aria-pressed={enabled}
+      disabled={disabled}
+      onClick={onToggle}
+    >
+      <span className="sound-toggle-label" aria-hidden="true">Sound</span>
+      <span className="sound-toggle-state" aria-hidden="true">{enabled ? "On" : "Off"}</span>
+    </button>
+  );
+}
+
 export function Game() {
   const [progress, setProgress] = useState<Progress>(freshProgress);
   const [hydrated, setHydrated] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
+  const [audioPreference, setAudioPreference] = useState<AudioPreference | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     tone: FeedbackTone;
@@ -742,6 +771,7 @@ export function Game() {
     tone: "neutral",
     text: "Begin with observation. The first interpretation is not always the right one.",
   });
+  const audioRef = useRef<HTMLAudioElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
 
@@ -778,9 +808,34 @@ export function Game() {
   }, []);
 
   useEffect(() => {
+    const savedPreference = window.localStorage.getItem(AUDIO_PREFERENCE_KEY);
+    if (savedPreference === "on" || savedPreference === "off") {
+      setAudioPreference(savedPreference);
+    }
+    if (audioRef.current) audioRef.current.volume = AMBIENT_VOLUME;
+  }, []);
+
+  useEffect(() => {
     if (!hydrated) return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
   }, [hydrated, progress]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      if (document.hidden) {
+        audio.pause();
+        return;
+      }
+      if (soundEnabled) {
+        void audio.play().catch(() => setSoundEnabled(false));
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [soundEnabled]);
 
   const openJournal = () => {
     returnFocusRef.current = document.activeElement as HTMLElement;
@@ -835,10 +890,41 @@ export function Game() {
     setShowIntro(returnToIntro);
   };
 
+  const rememberAudioPreference = (preference: AudioPreference) => {
+    setAudioPreference(preference);
+    window.localStorage.setItem(AUDIO_PREFERENCE_KEY, preference);
+  };
+
+  const enableAmbientSound = () => {
+    const audio = audioRef.current;
+    rememberAudioPreference("on");
+    setSoundEnabled(true);
+    if (!audio) return;
+    audio.volume = AMBIENT_VOLUME;
+    void audio.play().catch(() => setSoundEnabled(false));
+  };
+
+  const disableAmbientSound = () => {
+    rememberAudioPreference("off");
+    audioRef.current?.pause();
+    setSoundEnabled(false);
+  };
+
+  const toggleAmbientSound = () => {
+    if (soundEnabled) disableAmbientSound();
+    else enableAmbientSound();
+  };
+
+  const enterMuseum = () => {
+    if (audioPreference !== "off") enableAmbientSound();
+    setShowIntro(false);
+  };
+
   const startFresh = () => {
     if (hasProgress && !window.confirm("Start over and replace your saved museum progress?")) {
       return;
     }
+    if (audioPreference !== "off") enableAmbientSound();
     resetProgress(false);
   };
 
@@ -900,16 +986,39 @@ export function Game() {
     window.setTimeout(() => returnFocusRef.current?.focus(), 0);
   };
 
+  const soundtrack = (
+    <audio
+      key="museum-soundtrack"
+      className="ambient-audio"
+      ref={audioRef}
+      loop
+      preload="metadata"
+      aria-hidden="true"
+      onError={() => setSoundEnabled(false)}
+    >
+      <source src="/audio/unsolved-investigation.ogg" type="audio/ogg" />
+      <source src="/audio/unsolved-investigation.mp3" type="audio/mpeg" />
+    </audio>
+  );
+
   if (showIntro) {
     return (
       <>
+        {soundtrack}
         <main className="intro-shell" aria-busy={!hydrated}>
           <header className="intro-header">
             <div className="brand-mark">
               <span>Museum</span>
               <strong>Misfit Things</strong>
             </div>
-            <span className="intro-edition">Six-object apprenticeship · Device-local progress</span>
+            <div className="intro-header-tools">
+              <span className="intro-edition">Six-object apprenticeship · Device-local progress</span>
+              <SoundToggle
+                enabled={soundEnabled}
+                disabled={!hydrated}
+                onToggle={toggleAmbientSound}
+              />
+            </div>
           </header>
           <section className="intro-grid">
             <div className="intro-copy">
@@ -933,7 +1042,7 @@ export function Game() {
                       className="button button-primary"
                       type="button"
                       disabled={!hydrated}
-                      onClick={() => setShowIntro(false)}
+                      onClick={enterMuseum}
                     >
                       Resume at Object {quest.number}
                       <span aria-hidden="true">→</span>
@@ -952,7 +1061,7 @@ export function Game() {
                     className="button button-primary"
                     type="button"
                     disabled={!hydrated}
-                    onClick={() => setShowIntro(false)}
+                    onClick={enterMuseum}
                   >
                     {hydrated ? "Enter the museum" : "Opening the ledger…"}
                     <span aria-hidden="true">→</span>
@@ -962,6 +1071,23 @@ export function Game() {
               <p className="source-note">
                 An independent learning experience inspired by concepts from Don Norman&apos;s
                 <em> The Design of Everyday Things</em>. All scenarios and artwork are original.
+                Music: {" "}
+                <a
+                  href="https://opengameart.org/content/unsolved-investigation"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  “Unsolved Investigation” by isaiah658
+                </a>{" "}
+                (
+                <a
+                  href="https://creativecommons.org/publicdomain/zero/1.0/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  CC0
+                </a>
+                ).
               </p>
             </div>
             <div className="intro-artifact">
@@ -989,13 +1115,17 @@ export function Game() {
   if (progress.phase === "complete") {
     return (
       <>
+        {soundtrack}
         <main className="completion-shell">
           <header className="completion-header">
             <div className="brand-mark brand-mark-light">
               <span>Museum</span>
               <strong>Misfit Things</strong>
             </div>
-            <span>Apprenticeship record · Complete</span>
+            <div className="completion-header-tools">
+              <span className="completion-status">Apprenticeship record · Complete</span>
+              <SoundToggle enabled={soundEnabled} onToggle={toggleAmbientSound} />
+            </div>
           </header>
           <section className="completion-grid">
             <div className="completion-copy">
@@ -1047,6 +1177,7 @@ export function Game() {
 
   return (
     <>
+      {soundtrack}
       <main className="game-shell">
         <header className="museum-header">
           <button className="brand-mark brand-button" type="button" onClick={() => setShowIntro(true)}>
@@ -1078,6 +1209,7 @@ export function Game() {
                 <span style={{ width: xpPercent + "%" }} />
               </div>
             </div>
+            <SoundToggle enabled={soundEnabled} onToggle={toggleAmbientSound} />
             <button className="header-action" type="button" onClick={openJournal}>
               Journal <span aria-hidden="true">J</span>
             </button>
