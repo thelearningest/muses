@@ -1057,7 +1057,14 @@ export function Game() {
               <strong>{rank.title}</strong>
             </div>
             <div className="xp-meter">
-              <div className="xp-copy"><span>Field XP</span><strong>{progress.xp} / {MAX_XP}</strong></div>
+              <div className="xp-copy">
+                <span className="xp-label">Field XP</span>
+                <strong className="xp-value">
+                  <span>{progress.xp}</span>
+                  <span aria-hidden="true">/</span>
+                  <span>{MAX_XP}</span>
+                </strong>
+              </div>
               <div
                 className="xp-track"
                 role="progressbar"

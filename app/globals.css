@@ -364,17 +364,37 @@ button:disabled {
 
 .xp-meter {
   align-content: center;
+  justify-content: stretch;
   min-width: 220px;
 }
 
 .xp-copy {
   align-items: center;
-  display: flex;
+  column-gap: clamp(1rem, 2.2vw, 2rem);
+  display: grid;
+  grid-template-columns: max-content max-content;
   justify-content: space-between;
+  width: 100%;
 }
 
 .xp-copy strong {
   font-size: 0.72rem;
+}
+
+.xp-value {
+  align-items: baseline;
+  display: inline-flex;
+  gap: 0.28rem;
+  white-space: nowrap;
+}
+
+.xp-value span {
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: inherit;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .xp-track {
