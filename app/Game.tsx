@@ -207,11 +207,11 @@ const QUESTS: Quest[] = [
     title: "The Vanishing Instructions",
     gallery: "Courier collection · Object 23",
     story:
-      "A courier is storing a parcel in a secure cabinet. The cabinet shows six steps for only four seconds. After an interruption, both the instructions and the courier's progress disappear, forcing them to start over.",
+      "A courier is storing a parcel in a digital locker. Its screen shows all six instructions for only four seconds, then clears them. If the courier is interrupted, the locker also forgets their progress, forcing them to restart.",
     objective:
-      "Redesign the cabinet so the courier can see what is done and what comes next, then resume after an interruption.",
+      "Redesign the locker so the courier can see what is done and what comes next, then resume after an interruption.",
     clue:
-      "The courier knows they need to store a parcel. The problem is remembering six hidden steps and where they stopped.",
+      "The courier knows they need to store a parcel. The problem is that the screen hides six steps and forgets where they stopped.",
     artifact: "memory",
     xp: 80,
     observationTools: [
@@ -229,7 +229,7 @@ const QUESTS: Quest[] = [
       },
       {
         id: "memory-burden",
-        label: "The cabinet makes the courier remember every step and where they stopped.",
+        label: "The locker makes the courier remember every step and where they stopped.",
         feedback:
           "Yes. The instructions disappear exactly when the courier needs them, forcing memory to carry both the steps and progress.",
         correct: true,
@@ -247,7 +247,7 @@ const QUESTS: Quest[] = [
         id: "persistent-checklist",
         label: "Keep the steps, current state, and next action visible.",
         feedback:
-          "After the interruption, the courier resumes at the exact step they left. The cabinet remembers for them.",
+          "After the interruption, the courier resumes at the exact step they left. The locker remembers for them.",
         correct: true,
       },
       {
@@ -577,7 +577,7 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
         {quest.artifact === "memory" && (
           <div className="memory-scene">
             <div className="memory-header">
-              <span>Courier cabinet 04</span>
+              <span>Digital locker 04</span>
               <span>{repaired ? "STATE SAVED" : "04 SEC"}</span>
             </div>
             <div className="memory-screen">
