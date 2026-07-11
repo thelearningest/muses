@@ -274,9 +274,9 @@ const QUESTS: Quest[] = [
     title: "The Four-Constraint Foundry",
     gallery: "Assembly wing · Object 31",
     story:
-      "An apprentice can place every guardian part into almost every opening. The machine waits until the end to announce failure.",
+      "In this foundry, apprentices build guardian seals by placing four parts—a circle, square, triangle, and key—into matching openings. But every part seems to fit almost anywhere, and the machine reports mistakes only after the entire seal is assembled.",
     objective:
-      "Guide correct assembly before error by combining physical, cultural, semantic, and logical constraints.",
+      "Redesign the parts and openings so the apprentice can tell where each piece belongs before making a mistake.",
     clue:
       "Several wrong actions appear equally plausible. The foundry allows them all and supplies meaning only after the assembly is complete.",
     artifact: "constraints",
