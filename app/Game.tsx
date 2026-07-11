@@ -64,31 +64,31 @@ const QUESTS: Quest[] = [
     title: "The Gate of False Handles",
     gallery: "North entrance · Object 01",
     story:
-      "Three travelers pace before a lacquer-red gate. One pulls, one pushes, and the third quietly blames themself.",
+      "Three first-time visitors are trying to enter through a lacquer-red gate. Its large black handle tells them to pull, but the gate opens only when pushed, so they keep failing and blame themselves.",
     objective:
-      "Repair the gate so a first-time visitor knows exactly what to do.",
+      "Redesign the gate so a first-time visitor can tell at a glance that they should push.",
     clue:
-      "The gate moves inward, but its dominant black handle invites a pulling action. The possible action and the visible cue disagree.",
+      "The gate opens inward when pushed, but the large black handle looks made for pulling. The object gives the wrong visual instruction.",
     artifact: "gate",
     xp: 70,
     observationTools: [
-      "Watch what the object invites",
-      "Compare cue with required action",
+      "Notice what action the handle suggests",
+      "Compare that suggestion with how the gate opens",
       "Notice who receives the blame",
     ],
     diagnosis: [
       {
         id: "weak-visitors",
-        label: "The travelers are not pulling hard enough.",
+        label: "The visitors are not trying hard enough.",
         feedback:
           "More force will not resolve a contradictory cue. Repeated confusion is evidence about the artifact, not the visitors.",
         correct: false,
       },
       {
         id: "conflicting-signifier",
-        label: "The signifier conflicts with the action the gate requires.",
+        label: "The handle suggests pulling, but the gate only opens when pushed.",
         feedback:
-          "Exactly. The gate can be pushed, but its most visible feature communicates pull.",
+          "Exactly. The visible clue—or signifier—points to the wrong action.",
         correct: true,
       },
       {
@@ -104,7 +104,7 @@ const QUESTS: Quest[] = [
         id: "push-plate",
         label: "Replace the handle with a broad, flat push plate.",
         feedback:
-          "The next traveler pushes on the first attempt. The hardware now signifies the intended action.",
+          "The next visitor pushes on the first attempt. The hardware now signifies the intended action.",
         correct: true,
       },
       {
@@ -125,7 +125,7 @@ const QUESTS: Quest[] = [
     principle: {
       name: "Discoverability",
       summary:
-        "Affordances make actions possible. Signifiers make the right action perceivable.",
+        "Affordances make actions possible; visible clues—signifiers—show people which action to take.",
     },
   },
   {
@@ -134,17 +134,17 @@ const QUESTS: Quest[] = [
     title: "The Constellation Switchboard",
     gallery: "Light archive · Object 12",
     story:
-      "Four ceiling lamps float in a square. Four identical switches wait in a row, and the room stays silent after every command.",
+      "An archive keeper needs to switch on one of four ceiling lamps. The lamps form a square, but four identical switches sit in a row. Nothing shows which lamp each switch controls or whether pressing it worked.",
     objective:
-      "Make the relationship between each control, each lamp, and the current state immediately understandable.",
+      "Redesign the switchboard so the keeper can choose the intended lamp and immediately see whether it turned on or off.",
     clue:
-      "The lamp layout is spatial, the controls are linear, and no response confirms which lamp received a command.",
+      "The lamps form a square, the switches form a row, and the console gives no clear response after a switch is used.",
     artifact: "switchboard",
     xp: 75,
     observationTools: [
-      "Trace control to result",
-      "Compare physical arrangements",
-      "Listen for confirmation of state",
+      "Compare the switch layout with the lamp layout",
+      "Check whether a switch reveals which lamp it controls",
+      "Check whether the lamp's state is obvious",
     ],
     diagnosis: [
       {
@@ -156,9 +156,9 @@ const QUESTS: Quest[] = [
       },
       {
         id: "mapping-feedback",
-        label: "The mapping is arbitrary and the feedback is too weak.",
+        label: "The switch layout does not match the lamp layout, and nothing confirms the result.",
         feedback:
-          "Correct. The operator must cross both a gulf of execution and a gulf of evaluation.",
+          "Correct. The poor control-to-lamp relationship is called mapping, and the missing response is called feedback.",
         correct: true,
       },
       {
@@ -172,9 +172,9 @@ const QUESTS: Quest[] = [
     repairs: [
       {
         id: "spatial-map",
-        label: "Arrange controls in the same 2×2 pattern and show live state.",
+        label: "Arrange the switches in the same 2×2 pattern and show each lamp's on/off state.",
         feedback:
-          "The spatial relationship becomes obvious, and each lamp answers immediately when its control changes.",
+          "The matching layout makes the relationship obvious, and each lamp responds immediately when its switch changes.",
         correct: true,
       },
       {
@@ -195,7 +195,7 @@ const QUESTS: Quest[] = [
     principle: {
       name: "Mapping & feedback",
       summary:
-        "Natural relationships clarify what to do; timely feedback clarifies what happened.",
+        "Arrange controls to mirror what they affect, and show what happened immediately.",
     },
   },
   {
@@ -204,38 +204,38 @@ const QUESTS: Quest[] = [
     title: "The Vanishing Instructions",
     gallery: "Courier collection · Object 23",
     story:
-      "A courier cabinet reveals six arbitrary steps for four seconds. A visitor is interrupted midway and must begin again.",
+      "A courier is storing a parcel in a secure cabinet. The cabinet shows six steps for only four seconds. After an interruption, both the instructions and the courier's progress disappear, forcing them to start over.",
     objective:
-      "Move fragile task knowledge out of memory and into the world at the moment it is needed.",
+      "Redesign the cabinet so the courier can see what is done and what comes next, then resume after an interruption.",
     clue:
-      "The visitor understands the goal. The cabinet simply asks working memory to preserve too many arbitrary steps through an interruption.",
+      "The courier knows they need to store a parcel. The problem is remembering six hidden steps and where they stopped.",
     artifact: "memory",
     xp: 80,
     observationTools: [
-      "Count facts held in memory",
-      "Introduce a realistic interruption",
-      "Check whether current state persists",
+      "Notice what the courier must remember",
+      "See what disappears after an interruption",
+      "Check whether the cabinet remembers completed steps",
     ],
     diagnosis: [
       {
         id: "careless-visitor",
-        label: "The visitor is careless and needs to concentrate.",
+        label: "The courier is careless and needs to concentrate.",
         feedback:
           "Interruption is normal. A system that loses the task state turns a human limitation into repeated failure.",
         correct: false,
       },
       {
         id: "memory-burden",
-        label: "The cabinet puts arbitrary steps and state in working memory.",
+        label: "The cabinet makes the courier remember every step and where they stopped.",
         feedback:
-          "Yes. The task is possible, but the necessary knowledge disappears precisely when the visitor needs it.",
+          "Yes. The instructions disappear exactly when the courier needs them, forcing memory to carry both the steps and progress.",
         correct: true,
       },
       {
         id: "longer-code",
-        label: "The access code should contain more characters.",
+        label: "Show the instructions for a few more seconds.",
         feedback:
-          "A longer arbitrary code adds burden without helping the visitor resume or understand progress.",
+          "More time helps only before an interruption; the instructions and progress still disappear.",
         correct: false,
       },
     ],
@@ -244,14 +244,14 @@ const QUESTS: Quest[] = [
         id: "persistent-checklist",
         label: "Keep the steps, current state, and next action visible.",
         feedback:
-          "After the interruption, the visitor resumes at the exact step they left. The cabinet remembers for them.",
+          "After the interruption, the courier resumes at the exact step they left. The cabinet remembers for them.",
         correct: true,
       },
       {
         id: "chime-only",
         label: "Play a louder reminder chime every ten seconds.",
         feedback:
-          "The chime signals that something matters but does not say what to do or where the visitor stopped.",
+          "The chime signals that something matters but does not say what to do or where the courier stopped.",
         correct: false,
       },
       {
@@ -265,7 +265,7 @@ const QUESTS: Quest[] = [
     principle: {
       name: "Knowledge in the world",
       summary:
-        "Visible state, reminders, and meaningful structure reduce fragile demands on memory.",
+        "Keep instructions, progress, and the next action visible when people need them.",
     },
   },
   {
@@ -274,31 +274,31 @@ const QUESTS: Quest[] = [
     title: "The Four-Constraint Foundry",
     gallery: "Assembly wing · Object 31",
     story:
-      "In this foundry, apprentices build guardian seals by placing four parts—a circle, square, triangle, and key—into matching openings. But every part seems to fit almost anywhere, and the machine reports mistakes only after the entire seal is assembled.",
+      "In this foundry, apprentices assemble a guardian seal by matching four pieces—a circle, square, triangle, and key shape—to four marked openings. The markings suggest where each piece belongs, but every opening accepts every piece, and the machine reports a mismatch only after the entire seal is assembled.",
     objective:
-      "Redesign the parts and openings so the apprentice can tell where each piece belongs before making a mistake.",
+      "Redesign the pieces and openings so the correct match is clear and a wrong piece cannot be placed.",
     clue:
-      "Several wrong actions appear equally plausible. The foundry allows them all and supplies meaning only after the assembly is complete.",
+      "The matching outlines offer a visual hint, but the openings do not enforce it. A wrong piece still fits, and the machine explains the error only after all four pieces are placed.",
     artifact: "constraints",
     xp: 85,
     observationTools: [
-      "List every plausible action",
-      "Classify the available constraints",
-      "Look for guidance before commitment",
+      "Compare each piece with the marked openings",
+      "Check whether a wrong piece is physically blocked",
+      "Look for guidance before a piece is placed",
     ],
     diagnosis: [
       {
         id: "boring-parts",
-        label: "The guardian parts are not visually exciting enough.",
+        label: "The seal pieces are not visually exciting enough.",
         feedback:
           "Decoration may change appeal, but it will not reduce the number of plausible wrong placements.",
         correct: false,
       },
       {
         id: "missing-constraints",
-        label: "The foundry permits too many plausible actions without guidance.",
+        label: "The markings suggest the right match, but the machine still accepts every wrong placement.",
         feedback:
-          "Correct. Useful constraints can make the correct assembly discoverable before a mistake occurs.",
+          "Correct. A useful physical constraint would prevent the wrong piece from fitting.",
         correct: true,
       },
       {
@@ -312,9 +312,9 @@ const QUESTS: Quest[] = [
     repairs: [
       {
         id: "layered-constraints",
-        label: "Combine keyed shapes, familiar marks, context, and remaining-slot logic.",
+        label: "Give each piece a unique fit, a familiar mark, and a meaningful position so the remaining slot becomes obvious.",
         feedback:
-          "Each layer narrows the possibilities. The final part has one clear home before the foundry activates.",
+          "The fit, mark, position, and final empty slot guide the apprentice before the machine starts.",
         correct: true,
       },
       {
@@ -328,14 +328,14 @@ const QUESTS: Quest[] = [
         id: "expert-lockout",
         label: "Lock the machine and allow only certified experts to use it.",
         feedback:
-          "Exclusion avoids redesigning the interaction. Proportional constraints should make the task safer for its real users.",
+          "Excluding beginners avoids the design problem. The machine should help its real users assemble it safely.",
         correct: false,
       },
     ],
     principle: {
       name: "Constraints",
       summary:
-        "Physical, cultural, semantic, and logical constraints narrow choices before mistakes occur.",
+        "Physical fit, cultural conventions, semantic meaning, and logical remaining choices rule out errors before they happen.",
     },
   },
   {
@@ -344,24 +344,24 @@ const QUESTS: Quest[] = [
     title: "The Tribunal of Human Error",
     gallery: "Restoration lab · Incident 07",
     story:
-      "After an interruption, an expert touches the destructive control beside Restore. The console erases the work and blames its operator.",
+      "A restoration expert is repairing a damaged archive. After an interruption, they mean to press RESTORE but accidentally press DELETE beside it. The console erases the work with no Undo, then blames the expert.",
     objective:
-      "Classify the failure correctly, then design for prevention, detection, and recovery.",
+      "Find out why the wrong button was pressed, then redesign the console so accidental deletion is harder and lost work can be recovered.",
     clue:
-      "The expert's goal was correct. The action drifted to an adjacent control while their attention was recovering from an interruption.",
+      "The expert still intended to restore the archive. While returning from an interruption, they touched the neighboring DELETE button instead.",
     artifact: "console",
     xp: 90,
     observationTools: [
-      "Separate goal from executed action",
-      "Reconstruct the interruption",
-      "Inspect recovery and undo",
+      "Compare what the expert meant to do with what they pressed",
+      "Notice how the interruption affected attention",
+      "Check whether deletion can be stopped or undone",
     ],
     diagnosis: [
       {
         id: "irresponsible",
         label: "The expert was irresponsible and needs discipline.",
         feedback:
-          "Punishment leaves the adjacent controls, interruption, hidden mode, and absent recovery exactly as they were.",
+          "Punishment leaves the adjacent controls, interruption, unclear consequences, and missing Undo exactly as they were.",
         correct: false,
       },
       {
@@ -382,9 +382,9 @@ const QUESTS: Quest[] = [
     repairs: [
       {
         id: "defense-layers",
-        label: "Separate the control, expose mode and consequence, preserve work, and add undo.",
+        label: "Move DELETE away from RESTORE, show what each action will do, preserve the work, and add Undo.",
         feedback:
-          "The next slip is blocked, made visible, or recoverable. Safety comes from several modest defenses working together.",
+          "The next slip is prevented, made visible, or recoverable. Several small safeguards work together.",
         correct: true,
       },
       {
@@ -405,7 +405,7 @@ const QUESTS: Quest[] = [
     principle: {
       name: "Design for error",
       summary:
-        "Treat predictable errors as system evidence. Prevent them, reveal them, contain them, and support recovery.",
+        "Assume predictable errors will happen: prevent them where possible, show what happened, limit damage, and make recovery easy.",
     },
   },
   {
@@ -414,17 +414,17 @@ const QUESTS: Quest[] = [
     title: "The Kiosk of the Wrong Problem",
     gallery: "Civic gallery · Final commission",
     story:
-      "The director demands a larger HELP button. Observation shows visitors cannot form a route, recover from detours, or reach the upper controls.",
+      "The museum director asks you to make the HELP button larger on a route-planning kiosk. But when you watch visitors, they struggle to build a route, recover after a wrong turn, and reach controls placed too high.",
     objective:
-      "Reframe the request, explore alternatives, and test a more inclusive route-planning experience.",
+      "Find what visitors actually need, try several route-planning designs, and test one that people with different abilities can use to plan a route and recover from a wrong turn.",
     clue:
-      "The requested feature is a proposed solution. Real behavior points to deeper wayfinding, feedback, and access problems.",
+      "A larger HELP button is only the director's suggested fix. Visitor behavior reveals broader problems with planning routes, understanding changes, and reaching controls.",
     artifact: "kiosk",
     xp: 100,
     observationTools: [
-      "Observe the whole activity",
-      "Separate request from underlying need",
-      "Include visitors with varied abilities",
+      "Watch visitors complete the whole task",
+      "Separate the director's request from visitors' needs",
+      "Notice barriers for visitors with different abilities",
     ],
     diagnosis: [
       {
@@ -436,9 +436,9 @@ const QUESTS: Quest[] = [
       },
       {
         id: "reframe-problem",
-        label: "Visitors cannot understand, control, or recover during route planning.",
+        label: "Visitors cannot plan or change a route, or recover after a wrong turn, without confusion.",
         feedback:
-          "Correct. This problem statement follows observed behavior and leaves room for multiple solutions.",
+          "Correct. This description follows what visitors actually do and leaves room for several solutions.",
         correct: true,
       },
       {
@@ -452,9 +452,9 @@ const QUESTS: Quest[] = [
     repairs: [
       {
         id: "double-diamond",
-        label: "Observe broadly, define the need, prototype alternatives, then test and iterate.",
+        label: "Watch visitors, define the real need, try several rough versions, then test and improve the best one.",
         feedback:
-          "Visitors form routes, understand changes, and recover without help. The museum reopens around a tested human need.",
+          "Visitors can now plan routes, understand changes, and recover without asking for help. The final design responds to what testing showed.",
         correct: true,
       },
       {
@@ -468,14 +468,14 @@ const QUESTS: Quest[] = [
         id: "copy-competitor",
         label: "Copy the newest kiosk from a famous museum.",
         feedback:
-          "Another context cannot replace observation of these visitors, activities, constraints, and learned conventions.",
+          "A design that works elsewhere may not fit these visitors, tasks, or surroundings. Observe this museum instead.",
         correct: false,
       },
     ],
     principle: {
       name: "Human-centered design",
       summary:
-        "Solve the right problem by observing, reframing, diverging, prototyping, testing, and iterating.",
+        "Observe people to find the real problem, explore several ideas, test them, and improve the design from what you learn.",
     },
   },
 ];
@@ -811,7 +811,7 @@ export function Game() {
     progress.phase === "inspect"
       ? "Observation"
       : progress.phase === "diagnose"
-        ? "Diagnosis"
+        ? "Find the cause"
         : progress.phase === "repair"
           ? "Repair"
           : progress.phase === "reward"
@@ -917,7 +917,9 @@ export function Game() {
               <h1>The City of Misfit Things</h1>
               <p className="intro-lede">
                 Ordinary objects have begun misleading the city. Enter the museum after hours,
-                repair six exhibits, and learn to see failure as evidence about design.
+                repair six exhibits, and learn to see failure as evidence about design. As a
+                Design Warden apprentice, you will observe what goes wrong, identify the cause,
+                choose a repair, and see the result.
               </p>
               <div className="intro-facts" aria-label="Game details">
                 <span><strong>06</strong> quests</span>
@@ -1144,8 +1146,8 @@ export function Game() {
 
             {progress.phase === "diagnose" && (
               <div className="rail-section">
-                <span className="eyebrow">Select one diagnosis</span>
-                <h2>Where does the interaction fail?</h2>
+                <span className="eyebrow">Choose the main cause</span>
+                <h2>What is causing the problem?</h2>
                 <div className="choice-list">
                   {quest.diagnosis.map((choice) => (
                     <button
@@ -1164,8 +1166,8 @@ export function Game() {
 
             {progress.phase === "repair" && (
               <div className="rail-section">
-                <span className="eyebrow">Equip one repair</span>
-                <h2>Change the object, not the person.</h2>
+                <span className="eyebrow">Choose one repair</span>
+                <h2>Choose the repair that addresses the cause.</h2>
                 <div className="choice-list">
                   {quest.repairs.map((choice) => (
                     <button
