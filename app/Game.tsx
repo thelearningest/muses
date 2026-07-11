@@ -50,7 +50,7 @@ type Progress = {
 
 const STORAGE_KEY = "design-warden-progress:v1";
 const AUDIO_PREFERENCE_KEY = "design-warden-audio:v1";
-const AMBIENT_VOLUME = 0.1;
+const AMBIENT_VOLUME = 0.25;
 const MAX_XP = 500;
 const PHASES: Phase[] = [
   "inspect",
@@ -761,7 +761,7 @@ export function Game() {
   const [progress, setProgress] = useState<Progress>(freshProgress);
   const [hydrated, setHydrated] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
-  const [audioPreference, setAudioPreference] = useState<AudioPreference | null>(null);
+  const [audioPreference, setAudioPreference] = useState<AudioPreference>("on");
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
