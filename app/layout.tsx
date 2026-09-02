@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "The City of Misfit Things",
+  title: "Playable Books",
   description:
-    "A six-quest design apprenticeship where confusing everyday objects become playable lessons.",
+    "Turn a design book into a playable practice game with decisions, feedback, and page references.",
   openGraph: {
-    title: "The City of Misfit Things",
+    title: "Playable Books",
     description:
-      "Repair six museum artifacts and learn the principles of human-centered design.",
+      "Turn a design book into a playable practice game with decisions, feedback, and page references.",
     type: "website",
   },
 };

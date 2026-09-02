@@ -31,11 +31,11 @@ test("server-renders the book-to-RPG library shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>The City of Misfit Things<\/title>/i);
-  assert.match(html, /Agentic learning studio/i);
-  assert.match(html, /Turn a design book into a world you can practice/i);
+  assert.match(html, /<title>Playable Books<\/title>/i);
+  assert.match(html, /For designers who learn by doing/i);
+  assert.match(html, /Turn what you read into design decisions/i);
   assert.match(html, /The City of Misfit Things/i);
-  assert.match(html, /Transform book into RPG/i);
+  assert.match(html, /Create my learning game/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
@@ -50,7 +50,7 @@ test("ships six quests, local progress, 3D inspection, and narration", async () 
   ]);
 
   assert.equal((game.match(/number: "0[1-6]"/g) ?? []).length, 6);
-  assert.match(game, /design-warden-progress:v1/);
+  assert.match(game, /design-warden-progress:v2:/);
   assert.match(game, /design-warden-audio:v1/);
   assert.match(game, /unsolved-investigation\.(ogg|mp3)/);
   assert.match(game, /Turn background music (on|off)/);
@@ -69,7 +69,7 @@ test("ships six quests, local progress, 3D inspection, and narration", async () 
   assert.match(game, /false-handle-gate\.png/);
   assert.match(game, /prefers-reduced-motion|Principle journal/i);
   assert.match(page, /<BookRpgApp \/>/);
-  assert.match(layout, /title: "The City of Misfit Things"/);
+  assert.match(layout, /title: "Playable Books"/);
   assert.match(css, /--yellow: #f0ca08/);
   assert.match(css, /\.gate-inspector-canvas/);
   assert.match(packageJson, /"three"/);
