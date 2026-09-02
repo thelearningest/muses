@@ -1479,6 +1479,7 @@ button:disabled {
 }
 
 .dock-actions .button-narration {
+  background: transparent;
   border-color: var(--yellow);
   color: var(--white);
   min-width: 172px;
