@@ -39,9 +39,10 @@ test("server-renders the book-to-RPG library shell", async () => {
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
-test("ships six quests, local progress, and the original artifact", async () => {
-  const [game, page, layout, css, packageJson] = await Promise.all([
+test("ships six quests, local progress, 3D inspection, and narration", async () => {
+  const [game, inspector, page, layout, css, packageJson] = await Promise.all([
     readFile(new URL("../app/Game.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/GateInspector3D.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
@@ -53,11 +54,22 @@ test("ships six quests, local progress, and the original artifact", async () => 
   assert.match(game, /design-warden-audio:v1/);
   assert.match(game, /unsolved-investigation\.(ogg|mp3)/);
   assert.match(game, /Turn background music (on|off)/);
+  assert.match(game, /Play narration/);
+  assert.match(game, /SpeechSynthesisUtterance/);
+  assert.match(game, /NARRATION_DUCK_VOLUME/);
+  assert.match(game, /<GateInspector3D/);
+  assert.match(inspector, /WebGLRenderer/);
+  assert.match(inspector, /OrbitControls/);
+  assert.match(inspector, /Handle cue/);
+  assert.match(inspector, /Push motion/);
+  assert.match(inspector, /gate-inspector-fallback/);
   assert.match(game, /false-handle-gate\.png/);
   assert.match(game, /prefers-reduced-motion|Principle journal/i);
   assert.match(page, /<BookRpgApp \/>/);
   assert.match(layout, /title: "The City of Misfit Things"/);
   assert.match(css, /--yellow: #f0ca08/);
+  assert.match(css, /\.gate-inspector-canvas/);
+  assert.match(packageJson, /"three"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
 
   await access(new URL("../public/assets/false-handle-gate.png", import.meta.url));

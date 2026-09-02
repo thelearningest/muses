@@ -13,6 +13,8 @@ Write for a university design student or early-career designer who wants to appl
 
 Use a curious, intelligent, lightly mysterious wrapper, but never let atmosphere obscure the task or lesson. Avoid cryptic titles, faux-poetic fragments, generic danger, unexplained jargon, and ornamental narration. Invent an original setting, situations, labels, and prose; do not copy passages or imitate the book cover. The six artifact values are reusable visual metaphors: gate for discoverability, switchboard for relationships, memory for cognitive load, constraints for fit and rules, console for risky actions, and kiosk for systems or process. Choose the closest metaphor for each lesson.
 
+At least one quest must use the "gate" artifact so the player receives an interactive 3D design exercise. Ground that quest in the source principle closest to affordances, signifiers, discoverability, expectation, or guiding action. Its situation must match the rendered object: a red entrance gate whose pull handle conflicts with its required push motion, repaired with a broad push plate. Keep the lesson faithful to the book rather than inventing a new principle.
+
 Ground every quest in one to three PDF page ranges. Use printed chapter or section names when visible. Do not invent citations. Keep all strings concise enough for the existing interface. Return only the required structured output.`;
 
 function responseText(payload: Record<string, unknown>): string | null {
@@ -111,6 +113,9 @@ export async function POST(request: Request) {
     }
     const content = parseGameContent(parsed);
     if (!content) return errorResponse("The generated game did not pass validation. Please retry.", 502, requestId);
+    if (!content.quests.some((quest) => quest.artifact === "gate")) {
+      return errorResponse("The generated game was missing its interactive 3D exercise. Please retry.", 502, requestId);
+    }
 
     return Response.json({
       game: {

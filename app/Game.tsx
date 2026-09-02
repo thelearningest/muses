@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { Choice, GamePackage, Quest } from "./game-package";
+
+const GateInspector3D = lazy(() =>
+  import("./GateInspector3D").then((module) => ({ default: module.GateInspector3D })),
+);
 
 type Phase = "inspect" | "diagnose" | "repair" | "reward" | "complete";
 type FeedbackTone = "neutral" | "good" | "bad";
 type AudioPreference = "on" | "off";
+type NarrationState = "idle" | "speaking" | "paused" | "unavailable";
 type Progress = {
   version: 1;
   currentQuest: number;
@@ -17,6 +22,7 @@ type Progress = {
 
 const AUDIO_PREFERENCE_KEY = "design-warden-audio:v1";
 const AMBIENT_VOLUME = 0.25;
+const NARRATION_DUCK_VOLUME = 0.08;
 const PHASES: Phase[] = [
   "inspect",
   "diagnose",
@@ -487,27 +493,17 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
       <div className={className}>
         {quest.artifact === "gate" && (
           <div className="gate-scene">
-            <img
-              src="/assets/false-handle-gate.png"
-              alt="A lacquer-red gate with an inviting black pull handle and ambiguous hardware."
-              width="1536"
-              height="1024"
-              loading="eager"
-              fetchPriority="high"
-            />
-            {revealed && (
-              <>
-                <span className="artifact-callout callout-handle">
-                  Dominant cue: pull
-                </span>
-                <span className="artifact-callout callout-motion">
-                  Required motion: push
-                </span>
-              </>
-            )}
-            {repaired && (
-              <span className="simulated-repair">Broad push surface fitted</span>
-            )}
+            <Suspense
+              fallback={
+                <div
+                  className="gate-inspector-fallback"
+                  role="img"
+                  aria-label="A lacquer-red gate with an inviting black pull handle and ambiguous hardware."
+                />
+              }
+            >
+              <GateInspector3D revealed={revealed} repaired={repaired} />
+            </Suspense>
           </div>
         )}
 
@@ -738,6 +734,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
   const [showIntro, setShowIntro] = useState(true);
   const [audioPreference, setAudioPreference] = useState<AudioPreference>("on");
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [narrationState, setNarrationState] = useState<NarrationState>("idle");
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     tone: FeedbackTone;
@@ -873,7 +870,93 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
     [progress.principles, quests],
   );
 
+  const narrationText = useMemo(() => {
+    if (progress.phase === "inspect") {
+      return `${quest.title}. ${quest.story} Objective: ${quest.objective} Inspection checklist: ${quest.observationTools.join(". ")}.`;
+    }
+    if (progress.phase === "diagnose") {
+      return `${quest.title}. Inspection finding: ${feedback.text}`;
+    }
+    if (progress.phase === "repair") {
+      return `${quest.title}. Repair finding: ${feedback.text}`;
+    }
+    if (progress.phase === "reward") {
+      return `${quest.principle.name}. ${quest.principle.summary}`;
+    }
+    return "The museum apprenticeship is complete.";
+  }, [feedback.text, progress.phase, quest]);
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (!("speechSynthesis" in window)) {
+        setNarrationState("unavailable");
+        return;
+      }
+      window.speechSynthesis.cancel();
+      setNarrationState("idle");
+    });
+    return () => {
+      cancelled = true;
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    };
+  }, [narrationText]);
+
+  const stopNarration = () => {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    setNarrationState("idle");
+    if (audioRef.current && soundEnabled) audioRef.current.volume = AMBIENT_VOLUME;
+  };
+
+  const toggleNarration = () => {
+    if (!("speechSynthesis" in window)) {
+      setNarrationState("unavailable");
+      return;
+    }
+
+    const speech = window.speechSynthesis;
+    if (narrationState === "speaking") {
+      speech.pause();
+      setNarrationState("paused");
+      if (audioRef.current && soundEnabled) audioRef.current.volume = AMBIENT_VOLUME;
+      return;
+    }
+    if (narrationState === "paused") {
+      speech.resume();
+      setNarrationState("speaking");
+      if (audioRef.current && soundEnabled) audioRef.current.volume = NARRATION_DUCK_VOLUME;
+      return;
+    }
+
+    speech.cancel();
+    const utterance = new SpeechSynthesisUtterance(narrationText);
+    const englishVoice = speech.getVoices().find((voice) => voice.lang.toLowerCase().startsWith("en"));
+    if (englishVoice) utterance.voice = englishVoice;
+    utterance.rate = 0.92;
+    utterance.pitch = 0.96;
+    utterance.onend = () => {
+      setNarrationState("idle");
+      if (audioRef.current && soundEnabled) audioRef.current.volume = AMBIENT_VOLUME;
+    };
+    utterance.onerror = () => {
+      setNarrationState("idle");
+      if (audioRef.current && soundEnabled) audioRef.current.volume = AMBIENT_VOLUME;
+    };
+    if (audioRef.current && soundEnabled) audioRef.current.volume = NARRATION_DUCK_VOLUME;
+    setNarrationState("speaking");
+    speech.speak(utterance);
+  };
+
+  const narrationLabel =
+    narrationState === "speaking"
+      ? "Pause narration"
+      : narrationState === "paused"
+        ? "Resume narration"
+        : "Play narration";
+
   const resetProgress = (returnToIntro: boolean) => {
+    stopNarration();
     const next = freshProgress();
     window.localStorage.removeItem(storageKey);
     setProgress(next);
@@ -895,7 +978,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
     rememberAudioPreference("on");
     setSoundEnabled(true);
     if (!audio) return;
-    audio.volume = AMBIENT_VOLUME;
+    audio.volume = narrationState === "speaking" ? NARRATION_DUCK_VOLUME : AMBIENT_VOLUME;
     void audio.play().catch(() => setSoundEnabled(false));
   };
 
@@ -961,6 +1044,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
   };
 
   const handleContinue = () => {
+    stopNarration();
     setSelectedChoice(null);
     setFeedback({
       tone: "neutral",
@@ -1184,9 +1268,16 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
       {soundtrack}
       <main className="game-shell">
         <header className="museum-header">
-          <button className="brand-mark brand-button" type="button" onClick={() => setShowIntro(true)}>
-            <span>{game ? "Design archive" : "Museum"}</span>
-            <strong>{game ? "Field Study" : "Misfit Things"}</strong>
+          <button
+            className="brand-mark brand-button"
+            type="button"
+            onClick={() => {
+              stopNarration();
+              setShowIntro(true);
+            }}
+          >
+            <span>{game ? "Design learning lab" : "Museum"}</span>
+            <strong>{game ? "Playable Books" : "Misfit Things"}</strong>
           </button>
           <div className="hud" aria-label="Player status">
             {onExit ? (
@@ -1343,6 +1434,18 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
             <p>{feedback.text}</p>
           </div>
           <div className="dock-actions">
+            <button
+              className="button button-narration"
+              type="button"
+              aria-pressed={narrationState === "speaking"}
+              disabled={narrationState === "unavailable"}
+              onClick={toggleNarration}
+            >
+              {narrationLabel}
+              <span className="narration-mark" aria-hidden="true">
+                {narrationState === "speaking" ? "II" : "▶"}
+              </span>
+            </button>
             <button className="button button-dark-outline" type="button" onClick={openJournal}>
               Open principle journal
             </button>

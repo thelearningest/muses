@@ -9,9 +9,12 @@ source-grounded field study using the same interaction system.
 - six original quests covering discoverability, mapping and feedback, knowledge
   in the world, constraints, error recovery, and human-centered design
 - immediate explanatory feedback with no score penalty for experimentation
+- a WebGL gate inspector with orbit, zoom, focused views, and a static fallback
+- optional browser-voice narration that lowers the ambient soundtrack while speaking
 - a responsive editorial museum interface with keyboard and reduced-motion support
 - device-local progress saved under `design-warden-progress:v1`
 - one-shot PDF-to-RPG generation with 4–9 source-anchored quests
+- at least one interactive 3D design exercise in every newly generated game
 - a device-local library of generated games
 
 ## Development
@@ -32,7 +35,7 @@ OPENAI_API_KEY=your_key_here
 The default generation profile is `gpt-5.6-sol` with high reasoning and Fast
 mode. Override it with `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, or
 `OPENAI_SERVICE_TIER`. The upload route
-accepts text-based PDFs up to 4 MB. Generated games and player progress stay in
+accepts text-based PDFs up to 50 MB. Generated games and player progress stay in
 the browser's local storage; the application does not retain uploaded PDFs.
 
 Run the production build and rendered-output tests before you commit:

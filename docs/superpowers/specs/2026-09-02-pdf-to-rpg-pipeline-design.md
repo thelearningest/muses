@@ -14,6 +14,7 @@ Extend The City of Misfit Things into a real web application where a user upload
 - Preserve the current curious, intelligent, lightly mysterious tone.
 - Reuse the current palette, typography character, accessibility behavior, progress system, explanatory feedback, and journal.
 - Adapt the setting, objects, labels, and scenarios to the individual design book.
+- Include at least one source-grounded interactive 3D design exercise in every generated game.
 - Generate original prose and scenarios rather than reproducing protected expression.
 - Include chapter, section, and PDF-page anchors wherever the source permits.
 
@@ -58,6 +59,7 @@ The generator must:
 - ground every takeaway in supplied page ranges;
 - keep the experience concise and below ten quests;
 - create an original thematic wrapper compatible with the existing visual system.
+- assign at least one compatible source lesson to the supported interactive 3D gate exercise.
 
 ### Shared game engine
 
