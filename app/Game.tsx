@@ -6,6 +6,9 @@ import type { Choice, GamePackage, Quest } from "./game-package";
 const GateInspector3D = lazy(() =>
   import("./GateInspector3D").then((module) => ({ default: module.GateInspector3D })),
 );
+const GeneratedArtifact = lazy(() =>
+  import("./GeneratedArtifact").then((module) => ({ default: module.GeneratedArtifact })),
+);
 
 type Phase = "inspect" | "diagnose" | "repair" | "reward" | "complete";
 type FeedbackTone = "neutral" | "good" | "bad";
@@ -487,6 +490,22 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
     quest.artifact +
     (revealed ? " is-revealed" : "") +
     (repaired ? " is-repaired" : "");
+
+  if (quest.visual) {
+    return (
+      <figure className="artifact-frame" aria-labelledby="artifact-caption">
+        <div className={`${className} artifact-generated`}>
+          <Suspense fallback={<div className="generated-artifact-loading">Preparing the study object…</div>}>
+            <GeneratedArtifact visual={quest.visual} revealed={revealed} repaired={repaired} />
+          </Suspense>
+        </div>
+        <figcaption id="artifact-caption">
+          <span>{quest.gallery}</span>
+          <span>{repaired ? "Repaired state" : revealed ? "Inspection state" : "Arrival state"}</span>
+        </figcaption>
+      </figure>
+    );
+  }
 
   return (
     <figure className="artifact-frame" aria-labelledby="artifact-caption">

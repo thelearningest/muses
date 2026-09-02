@@ -1134,6 +1134,186 @@ button:disabled {
   width: 100%;
 }
 
+.artifact-generated {
+  background: var(--paper-depth);
+}
+
+.generated-artifact-loading {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.generated-diagram,
+.generated-inspector {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.generated-diagram {
+  background: var(--white);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+}
+
+.generated-diagram-grid {
+  background-image: linear-gradient(rgba(21, 21, 18, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(21, 21, 18, 0.08) 1px, transparent 1px);
+  background-size: 34px 34px;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.generated-diagram-title {
+  border-left: 5px solid var(--red);
+  display: grid;
+  gap: 0.25rem;
+  padding-left: 0.8rem;
+  position: relative;
+  z-index: 2;
+}
+
+.accent-yellow .generated-diagram-title { border-left-color: var(--yellow); }
+.accent-green .generated-diagram-title { border-left-color: var(--green); }
+
+.generated-diagram-title span,
+.generated-inspector-guide span,
+.generated-inspector-guide small,
+.generated-inspector-elements,
+.generated-finding {
+  font-family: var(--mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.generated-diagram-title span {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.generated-diagram-title strong {
+  font-family: var(--serif);
+  font-size: clamp(1.35rem, 2.4vw, 2.1rem);
+  font-weight: 400;
+}
+
+.generated-elements {
+  align-items: center;
+  display: grid;
+  gap: clamp(0.75rem, 2vw, 1.5rem);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 2rem 0;
+  position: relative;
+  z-index: 2;
+}
+
+.generated-element {
+  align-items: center;
+  aspect-ratio: 1;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  display: flex;
+  font-family: var(--mono);
+  font-size: clamp(0.58rem, 1.2vw, 0.72rem);
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1.3;
+  padding: 0.75rem;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.accent-red .generated-element.element-2,
+.accent-red .generated-finding.is-repaired { background: var(--red); color: var(--white); }
+.accent-yellow .generated-element.element-2,
+.accent-yellow .generated-finding.is-repaired { background: var(--yellow); color: var(--ink); }
+.accent-green .generated-element.element-2,
+.accent-green .generated-finding.is-repaired { background: var(--green); color: var(--white); }
+
+.generated-network .generated-element { border-radius: 50%; }
+.generated-sequence .generated-element:nth-child(2) { transform: translateY(-1.5rem); }
+.generated-sequence .generated-element:nth-child(3) { transform: translateY(-3rem); }
+.generated-display .generated-element { aspect-ratio: 4 / 3; }
+.generated-console .generated-element { border-bottom-width: 8px; }
+.generated-assembly .generated-element:nth-child(1) { border-radius: 50%; }
+.generated-assembly .generated-element:nth-child(3) { transform: rotate(8deg); }
+.generated-portal .generated-elements { border: 10px solid var(--ink); border-bottom: 0; padding-inline: 1.2rem; }
+
+.generated-finding {
+  background: var(--ink);
+  bottom: 1rem;
+  color: var(--white);
+  font-size: 0.62rem;
+  line-height: 1.4;
+  margin: 0;
+  max-width: min(340px, 70%);
+  padding: 0.75rem 0.85rem;
+  position: absolute;
+  right: 1rem;
+  z-index: 4;
+}
+
+.generated-inspector-canvas,
+.generated-inspector-canvas canvas {
+  display: block;
+  height: 100%;
+  touch-action: none;
+  width: 100%;
+}
+
+.generated-inspector-guide {
+  background: rgba(255, 253, 247, 0.94);
+  border: 1px solid var(--ink);
+  display: grid;
+  gap: 0.2rem;
+  left: 1rem;
+  max-width: min(280px, 55%);
+  padding: 0.75rem 0.85rem;
+  position: absolute;
+  top: 1rem;
+}
+
+.generated-inspector-guide span {
+  color: var(--red);
+  font-size: 0.56rem;
+  font-weight: 700;
+}
+
+.generated-inspector-guide strong {
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.generated-inspector-guide small {
+  color: var(--muted);
+  font-size: 0.52rem;
+}
+
+.generated-inspector-elements {
+  bottom: 1rem;
+  display: flex;
+  gap: 0.35rem;
+  left: 1rem;
+  max-width: 58%;
+  position: absolute;
+}
+
+.generated-inspector-elements span {
+  background: rgba(255, 253, 247, 0.94);
+  border: 1px solid var(--ink);
+  font-size: 0.52rem;
+  line-height: 1.25;
+  padding: 0.5rem 0.58rem;
+}
+
 .gate-inspector-guide,
 .gate-inspector-finding,
 .gate-inspector-views {

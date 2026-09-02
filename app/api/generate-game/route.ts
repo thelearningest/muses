@@ -11,9 +11,9 @@ Create 4-9 concise quests that cover only the source's most important, distinct 
 
 Write for a university design student or early-career designer who wants to apply the book, not admire lore. In every quest, present information in this order: who the design serves, what that person needs to do, what evidence reveals the problem, and what decision the player must make. Use direct second-person language, concrete nouns, short sentences, and practical stakes. Make the correct action and its consequence easy to understand after the player commits.
 
-Use a curious, intelligent, lightly mysterious wrapper, but never let atmosphere obscure the task or lesson. Avoid cryptic titles, faux-poetic fragments, generic danger, unexplained jargon, and ornamental narration. Invent an original setting, situations, labels, and prose; do not copy passages or imitate the book cover. The six artifact values are reusable visual metaphors: gate for discoverability, switchboard for relationships, memory for cognitive load, constraints for fit and rules, console for risky actions, and kiosk for systems or process. Choose the closest metaphor for each lesson.
+Use a curious, intelligent, lightly mysterious wrapper, but never let atmosphere obscure the task or lesson. Avoid cryptic titles, faux-poetic fragments, generic danger, unexplained jargon, and ornamental narration. Invent an original setting, situations, labels, and prose; do not copy passages or imitate the book cover. The artifact field controls the broad interaction metaphor only.
 
-At least one quest must use the "gate" artifact so the player receives an interactive 3D design exercise. Ground that quest in the source principle closest to affordances, signifiers, discoverability, expectation, or guiding action. Its situation must match the rendered object: a red entrance gate whose pull handle conflicts with its required push motion, repaired with a broad push plate. Keep the lesson faithful to the book rather than inventing a new principle.
+Create a new visual brief for every quest. The visual must depict that quest's specific user, task, evidence, and repair rather than reuse examples from another game. Choose a form, accent from the established palette, concise object title, problem label, repair label, and three visible element labels. Use diagram mode for most quests and 3d mode for at least one quest. Choose the 3D form that makes the source lesson easiest to inspect; do not default to a gate unless the lesson genuinely concerns an entrance or threshold.
 
 Ground every quest in one to three PDF page ranges. Use printed chapter or section names when visible. Do not invent citations. Keep all strings concise enough for the existing interface. Return only the required structured output.`;
 
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
     }
     const content = parseGameContent(parsed);
     if (!content) return errorResponse("The generated game did not pass validation. Please retry.", 502, requestId);
-    if (!content.quests.some((quest) => quest.artifact === "gate")) {
+    if (!content.quests.every((quest) => quest.visual) || !content.quests.some((quest) => quest.visual?.mode === "3d")) {
       return errorResponse("The generated game was missing its interactive 3D exercise. Please retry.", 502, requestId);
     }
 

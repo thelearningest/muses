@@ -14,7 +14,7 @@ source-grounded field study using the same interaction system.
 - a responsive editorial museum interface with keyboard and reduced-motion support
 - device-local progress saved under `design-warden-progress:v1`
 - one-shot PDF-to-RPG generation with 4–9 source-anchored quests
-- at least one interactive 3D design exercise in every newly generated game
+- book-specific procedural visuals for every quest, including at least one interactive 3D design exercise
 - a device-local library of generated games
 
 ## Development

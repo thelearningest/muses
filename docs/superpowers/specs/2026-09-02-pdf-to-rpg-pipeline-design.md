@@ -59,7 +59,7 @@ The generator must:
 - ground every takeaway in supplied page ranges;
 - keep the experience concise and below ten quests;
 - create an original thematic wrapper compatible with the existing visual system.
-- assign at least one compatible source lesson to the supported interactive 3D gate exercise.
+- create a book-specific visual brief for every quest and render at least one as an interactive procedural 3D exercise.
 
 ### Shared game engine
 

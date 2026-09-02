@@ -19,6 +19,16 @@ export type SourceAnchor = {
   pageEnd: number;
 };
 
+export type VisualSpec = {
+  mode: "diagram" | "3d";
+  form: "portal" | "console" | "assembly" | "network" | "sequence" | "display";
+  accent: "red" | "yellow" | "green";
+  title: string;
+  problemLabel: string;
+  repairLabel: string;
+  elements: [string, string, string];
+};
+
 export type Quest = {
   id: string;
   number: string;
@@ -36,6 +46,7 @@ export type Quest = {
     name: string;
     summary: string;
   };
+  visual?: VisualSpec;
   sourceAnchors?: SourceAnchor[];
 };
 
@@ -98,6 +109,7 @@ export const GAME_CONTENT_SCHEMA = {
           "diagnosis",
           "repairs",
           "principle",
+          "visual",
           "sourceAnchors",
         ],
         properties: {
@@ -136,6 +148,25 @@ export const GAME_CONTENT_SCHEMA = {
             additionalProperties: false,
             required: ["name", "summary"],
             properties: { name: stringField, summary: stringField },
+          },
+          visual: {
+            type: "object",
+            additionalProperties: false,
+            required: ["mode", "form", "accent", "title", "problemLabel", "repairLabel", "elements"],
+            properties: {
+              mode: { type: "string", enum: ["diagram", "3d"] },
+              form: { type: "string", enum: ["portal", "console", "assembly", "network", "sequence", "display"] },
+              accent: { type: "string", enum: ["red", "yellow", "green"] },
+              title: stringField,
+              problemLabel: stringField,
+              repairLabel: stringField,
+              elements: {
+                type: "array",
+                minItems: 3,
+                maxItems: 3,
+                items: stringField,
+              },
+            },
           },
           sourceAnchors: {
             type: "array",
@@ -176,6 +207,19 @@ function validChoice(value: unknown): value is Choice {
   );
 }
 
+function validVisual(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return (
+    ["diagram", "3d"].includes(String(value.mode)) &&
+    ["portal", "console", "assembly", "network", "sequence", "display"].includes(String(value.form)) &&
+    ["red", "yellow", "green"].includes(String(value.accent)) &&
+    [value.title, value.problemLabel, value.repairLabel].every(isNonEmptyString) &&
+    Array.isArray(value.elements) &&
+    value.elements.length === 3 &&
+    value.elements.every(isNonEmptyString)
+  );
+}
+
 function validQuest(value: unknown): value is Quest {
   if (!isRecord(value)) return false;
   const artifacts: ArtifactType[] = ["gate", "switchboard", "memory", "constraints", "console", "kiosk"];
@@ -201,6 +245,7 @@ function validQuest(value: unknown): value is Quest {
     isRecord(value.principle) &&
     isNonEmptyString(value.principle.name) &&
     isNonEmptyString(value.principle.summary) &&
+    (value.visual === undefined || validVisual(value.visual)) &&
     Array.isArray(anchors) &&
     anchors.length > 0 &&
     anchors.every(
