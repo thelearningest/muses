@@ -1,0 +1,13 @@
+.openai
+.vinext
+.wrangler
+build
+db
+dist
+drizzle
+examples
+tests
+work
+worker
+drizzle.config.ts
+vite.config.ts

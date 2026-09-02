@@ -19,8 +19,28 @@ Requires Node.js `>=22.13.0`.
 ```bash
 npm install
 npm run dev
-npm test
 ```
 
-The site runs on vinext and is packaged for OpenAI Sites. The game itself uses
-no database, authentication, uploads, or external data service.
+Run the production build and rendered-output tests before you commit:
+
+```bash
+npm test
+npm run lint
+```
+
+The default scripts use vinext and package the site for OpenAI Sites. The game
+uses no database, authentication, uploads, or external data service.
+
+## Vercel deployment
+
+Use the native Next.js scripts to test the Vercel build locally:
+
+```bash
+npm run dev:vercel
+npm run build:vercel
+npm run start:vercel
+```
+
+`vercel.json` selects `npm run build:vercel` during deployment. The Vercel
+TypeScript configuration checks the application code without loading the
+OpenAI Sites and Cloudflare build files.
