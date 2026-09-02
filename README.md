@@ -9,6 +9,8 @@ burden, apply a repair, and add each learned principle to a field journal.
 - six original quests covering discoverability, mapping and feedback, knowledge
   in the world, constraints, error recovery, and human-centered design
 - immediate explanatory feedback with no score penalty for experimentation
+- a WebGL gate inspector with orbit, zoom, focused views, and a static fallback
+- optional browser-voice narration that lowers the ambient soundtrack while speaking
 - a responsive editorial museum interface with keyboard and reduced-motion support
 - device-local progress saved under `design-warden-progress:v1`
 

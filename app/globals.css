@@ -737,10 +737,108 @@ button:disabled {
   width: 100%;
 }
 
-.gate-scene img {
+.gate-scene img,
+.gate-inspector-fallback {
   height: 100%;
   object-fit: cover;
   width: 100%;
+}
+
+.gate-inspector-fallback {
+  background: url("/assets/false-handle-gate.png") center / cover no-repeat;
+}
+
+.gate-inspector {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.gate-inspector-canvas {
+  height: 100%;
+  min-height: 0;
+  touch-action: none;
+  width: 100%;
+}
+
+.gate-inspector-canvas canvas {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.gate-inspector-guide,
+.gate-inspector-finding,
+.gate-inspector-views {
+  position: absolute;
+  z-index: 3;
+}
+
+.gate-inspector-guide {
+  background: rgba(255, 253, 247, 0.94);
+  border: 1px solid var(--ink);
+  display: grid;
+  gap: 0.28rem;
+  left: 1rem;
+  padding: 0.7rem 0.8rem;
+  top: 1rem;
+}
+
+.gate-inspector-guide span,
+.gate-inspector-finding,
+.gate-inspector-views button {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gate-inspector-guide span {
+  color: var(--red);
+}
+
+.gate-inspector-guide strong {
+  font-size: 0.7rem;
+  line-height: 1.25;
+}
+
+.gate-inspector-views {
+  bottom: 1rem;
+  display: flex;
+  gap: 0.4rem;
+  left: 1rem;
+}
+
+.gate-inspector-views button {
+  background: rgba(255, 253, 247, 0.94);
+  border: 1px solid var(--ink);
+  color: var(--ink);
+  cursor: pointer;
+  min-height: 38px;
+  padding: 0.58rem 0.7rem;
+}
+
+.gate-inspector-views button:hover,
+.gate-inspector-views button.is-active {
+  background: var(--yellow);
+}
+
+.gate-inspector-finding {
+  background: var(--ink);
+  color: var(--white);
+  line-height: 1.35;
+  max-width: min(250px, 44%);
+  padding: 0.72rem 0.8rem;
+  right: 1rem;
+  top: 1rem;
+}
+
+.gate-inspector-finding.is-repaired {
+  background: var(--yellow);
+  color: var(--ink);
 }
 
 .callout-handle {
@@ -1378,6 +1476,29 @@ button:disabled {
 
 .dock-actions .button-yellow {
   min-width: 230px;
+}
+
+.dock-actions .button-narration {
+  border-color: var(--yellow);
+  color: var(--white);
+  min-width: 172px;
+}
+
+.dock-actions .button-narration:not(:disabled):hover,
+.dock-actions .button-narration[aria-pressed="true"] {
+  background: var(--yellow);
+  color: var(--ink);
+}
+
+.narration-mark {
+  align-items: center;
+  border: 1px solid currentColor;
+  display: inline-flex;
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  height: 24px;
+  justify-content: center;
+  min-width: 24px;
 }
 
 /* Journal */
