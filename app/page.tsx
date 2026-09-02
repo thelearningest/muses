@@ -1,5 +1,5 @@
-import { Game } from "./Game";
+import { BookRpgApp } from "./BookRpgApp";
 
 export default function Home() {
-  return <Game />;
+  return <BookRpgApp />;
 }

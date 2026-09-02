@@ -1,8 +1,8 @@
 # The City of Misfit Things
 
-A six-quest educational browser RPG about human-centered design. Players enter
-an after-hours object museum, inspect confusing artifacts, diagnose the design
-burden, apply a repair, and add each learned principle to a field journal.
+A browser RPG studio for learning human-centered design. Play the bundled
+six-quest museum apprenticeship or upload a design-book PDF and generate a new,
+source-grounded field study using the same interaction system.
 
 ## Experience
 
@@ -13,6 +13,9 @@ burden, apply a repair, and add each learned principle to a field journal.
 - optional browser-voice narration that lowers the ambient soundtrack while speaking
 - a responsive editorial museum interface with keyboard and reduced-motion support
 - device-local progress saved under `design-warden-progress:v1`
+- one-shot PDF-to-RPG generation with 4–9 source-anchored quests
+- book-specific procedural visuals for every quest, including at least one interactive 3D design exercise
+- a device-local library of generated games
 
 ## Development
 
@@ -23,6 +26,18 @@ npm install
 npm run dev
 ```
 
+PDF generation requires an OpenAI API key on the server:
+
+```bash
+OPENAI_API_KEY=your_key_here
+```
+
+The default generation profile is `gpt-5.6-sol` with high reasoning and Fast
+mode. Override it with `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, or
+`OPENAI_SERVICE_TIER`. The upload route
+accepts text-based PDFs up to 50 MB. Generated games and player progress stay in
+the browser's local storage; the application does not retain uploaded PDFs.
+
 Run the production build and rendered-output tests before you commit:
 
 ```bash
@@ -30,8 +45,8 @@ npm test
 npm run lint
 ```
 
-The default scripts use vinext and package the site for OpenAI Sites. The game
-uses no database, authentication, uploads, or external data service.
+The default scripts use vinext and package the site for OpenAI Sites. The MVP
+uses no database or application accounts. OpenAI API usage is billed separately.
 
 ## Vercel deployment
 

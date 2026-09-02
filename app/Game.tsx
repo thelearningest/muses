@@ -1,49 +1,19 @@
 "use client";
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type { Choice, GamePackage, Quest } from "./game-package";
 
 const GateInspector3D = lazy(() =>
   import("./GateInspector3D").then((module) => ({ default: module.GateInspector3D })),
+);
+const GeneratedArtifact = lazy(() =>
+  import("./GeneratedArtifact").then((module) => ({ default: module.GeneratedArtifact })),
 );
 
 type Phase = "inspect" | "diagnose" | "repair" | "reward" | "complete";
 type FeedbackTone = "neutral" | "good" | "bad";
 type AudioPreference = "on" | "off";
 type NarrationState = "idle" | "speaking" | "paused" | "unavailable";
-type ArtifactType =
-  | "gate"
-  | "switchboard"
-  | "memory"
-  | "constraints"
-  | "console"
-  | "kiosk";
-
-type Choice = {
-  id: string;
-  label: string;
-  feedback: string;
-  correct: boolean;
-};
-
-type Quest = {
-  id: string;
-  number: string;
-  title: string;
-  gallery: string;
-  story: string;
-  objective: string;
-  clue: string;
-  artifact: ArtifactType;
-  xp: number;
-  observationTools: string[];
-  diagnosis: Choice[];
-  repairs: Choice[];
-  principle: {
-    name: string;
-    summary: string;
-  };
-};
-
 type Progress = {
   version: 1;
   currentQuest: number;
@@ -53,11 +23,9 @@ type Progress = {
   principles: string[];
 };
 
-const STORAGE_KEY = "design-warden-progress:v1";
 const AUDIO_PREFERENCE_KEY = "design-warden-audio:v1";
 const AMBIENT_VOLUME = 0.25;
 const NARRATION_DUCK_VOLUME = 0.08;
-const MAX_XP = 500;
 const PHASES: Phase[] = [
   "inspect",
   "diagnose",
@@ -500,10 +468,10 @@ function freshProgress(): Progress {
   };
 }
 
-function rankForXP(xp: number) {
-  if (xp >= MAX_XP) return { level: 4, title: "Master Warden" };
-  if (xp >= 340) return { level: 3, title: "Design Warden" };
-  if (xp >= 170) return { level: 2, title: "Associate Curator" };
+function rankForXP(xp: number, maxXp: number) {
+  if (xp >= maxXp) return { level: 4, title: "Master Warden" };
+  if (xp >= maxXp * 0.68) return { level: 3, title: "Design Warden" };
+  if (xp >= maxXp * 0.34) return { level: 2, title: "Associate Curator" };
   return { level: 1, title: "Apprentice" };
 }
 
@@ -554,6 +522,22 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
     quest.artifact +
     (revealed ? " is-revealed" : "") +
     (repaired ? " is-repaired" : "");
+
+  if (quest.visual) {
+    return (
+      <figure className="artifact-frame" aria-labelledby="artifact-caption">
+        <div className={`${className} artifact-generated`}>
+          <Suspense fallback={<div className="generated-artifact-loading">Preparing the study object…</div>}>
+            <GeneratedArtifact visual={quest.visual} revealed={revealed} repaired={repaired} />
+          </Suspense>
+        </div>
+        <figcaption id="artifact-caption">
+          <span>{quest.gallery}</span>
+          <span>{repaired ? "Repaired state" : revealed ? "Inspection state" : "Arrival state"}</span>
+        </figcaption>
+      </figure>
+    );
+  }
 
   return (
     <figure className="artifact-frame" aria-labelledby="artifact-caption">
@@ -706,10 +690,12 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
 function PrincipleJournal({
   dialogRef,
   progress,
+  quests,
   onClose,
 }: {
   dialogRef: React.RefObject<HTMLDialogElement | null>;
   progress: Progress;
+  quests: Quest[];
   onClose: () => void;
 }) {
   return (
@@ -738,7 +724,7 @@ function PrincipleJournal({
           </button>
         </div>
         <ol className="journal-list">
-          {QUESTS.map((quest) => {
+          {quests.map((quest) => {
             const unlocked = progress.principles.includes(quest.id);
             return (
               <li className={unlocked ? "is-unlocked" : "is-locked"} key={quest.id}>
@@ -751,6 +737,11 @@ function PrincipleJournal({
                       ? quest.principle.summary
                       : "Complete this gallery repair to add the principle to your journal."}
                   </p>
+                  {unlocked && quest.sourceAnchors?.length ? (
+                    <p className="journal-source">
+                      Source: {quest.sourceAnchors.map((anchor) => `${anchor.label}, pp. ${anchor.pageStart}–${anchor.pageEnd}`).join("; ")}
+                    </p>
+                  ) : null}
                 </div>
               </li>
             );
@@ -785,7 +776,10 @@ function SoundToggle({
   );
 }
 
-export function Game() {
+export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void }) {
+  const quests = useMemo(() => game?.quests ?? QUESTS, [game]);
+  const maxXp = useMemo(() => quests.reduce((total, quest) => total + quest.xp, 0), [quests]);
+  const storageKey = `design-warden-progress:v2:${game?.id ?? "city-of-misfit-things"}`;
   const [progress, setProgress] = useState<Progress>(freshProgress);
   const [hydrated, setHydrated] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
@@ -811,31 +805,31 @@ export function Game() {
       if (cancelled) return;
 
       try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
+        const raw = window.localStorage.getItem(storageKey);
         if (raw) {
           const saved = JSON.parse(raw) as Partial<Progress>;
           const completed = Array.isArray(saved.completed)
-            ? saved.completed.filter((id): id is string => QUESTS.some((quest) => quest.id === id))
+            ? saved.completed.filter((id): id is string => quests.some((quest) => quest.id === id))
             : [];
           const principles = Array.isArray(saved.principles)
-            ? saved.principles.filter((id): id is string => QUESTS.some((quest) => quest.id === id))
+            ? saved.principles.filter((id): id is string => quests.some((quest) => quest.id === id))
             : [];
           setProgress({
             version: 1,
             currentQuest: Math.max(
               0,
-              Math.min(QUESTS.length - 1, Number(saved.currentQuest) || 0),
+              Math.min(quests.length - 1, Number(saved.currentQuest) || 0),
             ),
             phase: PHASES.includes(saved.phase as Phase)
               ? (saved.phase as Phase)
               : "inspect",
-            xp: Math.max(0, Math.min(MAX_XP, Number(saved.xp) || 0)),
+            xp: Math.max(0, Math.min(maxXp, Number(saved.xp) || 0)),
             completed,
             principles,
           });
         }
       } catch {
-        window.localStorage.removeItem(STORAGE_KEY);
+        window.localStorage.removeItem(storageKey);
       } finally {
         setHydrated(true);
       }
@@ -844,7 +838,7 @@ export function Game() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [maxXp, quests, storageKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -866,8 +860,8 @@ export function Game() {
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-  }, [hydrated, progress]);
+    window.localStorage.setItem(storageKey, JSON.stringify(progress));
+  }, [hydrated, progress, storageKey]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -908,9 +902,9 @@ export function Game() {
     progress.currentQuest > 0 ||
     progress.phase !== "inspect" ||
     progress.completed.length > 0;
-  const rank = rankForXP(progress.xp);
-  const xpPercent = Math.round((progress.xp / MAX_XP) * 100);
-  const quest = QUESTS[progress.currentQuest];
+  const rank = rankForXP(progress.xp, maxXp);
+  const xpPercent = Math.round((progress.xp / maxXp) * 100);
+  const quest = quests[progress.currentQuest];
   const phaseName =
     progress.phase === "inspect"
       ? "Observation"
@@ -923,8 +917,8 @@ export function Game() {
             : "Complete";
 
   const unlockedPrinciples = useMemo(
-    () => QUESTS.filter((item) => progress.principles.includes(item.id)),
-    [progress.principles],
+    () => quests.filter((item) => progress.principles.includes(item.id)),
+    [progress.principles, quests],
   );
 
   const narrationText = useMemo(() => {
@@ -1015,7 +1009,7 @@ export function Game() {
   const resetProgress = (returnToIntro: boolean) => {
     stopNarration();
     const next = freshProgress();
-    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(storageKey);
     setProgress(next);
     setSelectedChoice(null);
     setFeedback({
@@ -1089,7 +1083,7 @@ export function Game() {
         phase: "reward",
         xp: alreadyCompleted
           ? current.xp
-          : Math.min(MAX_XP, current.xp + quest.xp),
+          : Math.min(maxXp, current.xp + quest.xp),
         completed: alreadyCompleted
           ? current.completed
           : [...current.completed, quest.id],
@@ -1107,7 +1101,7 @@ export function Game() {
       tone: "neutral",
       text: "New artifact received. Observe before you explain.",
     });
-    if (progress.currentQuest === QUESTS.length - 1) {
+    if (progress.currentQuest === quests.length - 1) {
       setProgress((current) => ({ ...current, phase: "complete" }));
       return;
     }
@@ -1138,17 +1132,23 @@ export function Game() {
   );
 
   if (showIntro) {
+    const generated = Boolean(game);
     return (
       <>
         {soundtrack}
         <main className="intro-shell" aria-busy={!hydrated}>
           <header className="intro-header">
             <div className="brand-mark">
-              <span>Museum</span>
-              <strong>Misfit Things</strong>
+              <span>{generated ? "Design archive" : "Museum"}</span>
+              <strong>{generated ? "Field Study" : "Misfit Things"}</strong>
             </div>
             <div className="intro-header-tools">
-              <span className="intro-edition">Six-object apprenticeship · Device-local progress</span>
+              <span className="intro-edition">{quests.length}-quest apprenticeship · Device-local progress</span>
+              {onExit ? (
+                <button className="header-action" type="button" onClick={onExit}>
+                  Library
+                </button>
+              ) : null}
               <SoundToggle
                 enabled={soundEnabled}
                 disabled={!hydrated}
@@ -1159,17 +1159,15 @@ export function Game() {
           <section className="intro-grid">
             <div className="intro-copy">
               <span className="eyebrow">Interactive learning RPG</span>
-              <h1>The City of Misfit Things</h1>
+              <h1>{game?.title ?? "The City of Misfit Things"}</h1>
               <p className="intro-lede">
-                Ordinary objects have begun misleading the city. Enter the museum after hours,
-                repair six exhibits, and learn to see failure as evidence about design. As a
-                Design Warden apprentice, you will observe what goes wrong, identify the cause,
-                choose a repair, and see the result.
+                {game?.subtitle ??
+                  "Ordinary objects have begun misleading the city. Enter the museum after hours, repair six exhibits, and learn to see failure as evidence about design. As a Design Warden apprentice, you will observe what goes wrong, identify the cause, choose a repair, and see the result."}
               </p>
               <div className="intro-facts" aria-label="Game details">
-                <span><strong>06</strong> quests</span>
-                <span><strong>20–30</strong> minutes</span>
-                <span><strong>500</strong> XP</span>
+                <span><strong>{String(quests.length).padStart(2, "0")}</strong> quests</span>
+                <span><strong>Self</strong> paced</span>
+                <span><strong>{maxXp}</strong> XP</span>
               </div>
               <div className="intro-actions">
                 {hasProgress ? (
@@ -1199,14 +1197,14 @@ export function Game() {
                     disabled={!hydrated}
                     onClick={enterMuseum}
                   >
-                    {hydrated ? "Enter the museum" : "Opening the ledger…"}
+                    {hydrated ? "Begin the field study" : "Opening the ledger…"}
                     <span aria-hidden="true">→</span>
                   </button>
                 )}
               </div>
               <p className="source-note">
-                An independent learning experience inspired by concepts from Don Norman&apos;s
-                <em> The Design of Everyday Things</em>. All scenarios and artwork are original.
+                An independent learning experience inspired by concepts from
+                <em> {game?.sourceTitle ?? "The Design of Everyday Things"}</em>. All scenarios and artwork are original.
                 Music: {" "}
                 <a
                   href="https://opengameart.org/content/unsolved-investigation"
@@ -1243,7 +1241,7 @@ export function Game() {
             </div>
           </section>
         </main>
-        <PrincipleJournal dialogRef={dialogRef} progress={progress} onClose={closeJournal} />
+        <PrincipleJournal dialogRef={dialogRef} progress={progress} quests={quests} onClose={closeJournal} />
       </>
     );
   }
@@ -1291,6 +1289,11 @@ export function Game() {
                 >
                   Replay from the beginning
                 </button>
+                {onExit ? (
+                  <button className="button button-dark-outline" type="button" onClick={onExit}>
+                    Return to game library
+                  </button>
+                ) : null}
               </div>
             </div>
             <ol className="mastery-list" aria-label="Principles mastered">
@@ -1306,7 +1309,7 @@ export function Game() {
             </ol>
           </section>
         </main>
-        <PrincipleJournal dialogRef={dialogRef} progress={progress} onClose={closeJournal} />
+        <PrincipleJournal dialogRef={dialogRef} progress={progress} quests={quests} onClose={closeJournal} />
       </>
     );
   }
@@ -1324,10 +1327,15 @@ export function Game() {
               setShowIntro(true);
             }}
           >
-            <span>Museum</span>
-            <strong>Misfit Things</strong>
+            <span>{game ? "Design learning lab" : "Museum"}</span>
+            <strong>{game ? "Playable Books" : "Misfit Things"}</strong>
           </button>
           <div className="hud" aria-label="Player status">
+            {onExit ? (
+              <button className="header-action" type="button" onClick={onExit}>
+                Library
+              </button>
+            ) : null}
             <div className="hud-rank">
               <span>LVL {rank.level}</span>
               <strong>{rank.title}</strong>
@@ -1338,7 +1346,7 @@ export function Game() {
                 <strong className="xp-value">
                   <span>{progress.xp}</span>
                   <span aria-hidden="true">/</span>
-                  <span>{MAX_XP}</span>
+                  <span>{maxXp}</span>
                 </strong>
               </div>
               <div
@@ -1346,7 +1354,7 @@ export function Game() {
                 role="progressbar"
                 aria-label="Experience progress"
                 aria-valuemin={0}
-                aria-valuemax={MAX_XP}
+                aria-valuemax={maxXp}
                 aria-valuenow={progress.xp}
               >
                 <span style={{ width: xpPercent + "%" }} />
@@ -1360,9 +1368,9 @@ export function Game() {
         </header>
 
         <nav className="quest-wayfinder" aria-label="Quest progress">
-          <div className="quest-current"><span>Quest</span><strong>{quest.number} / 06</strong></div>
+          <div className="quest-current"><span>Quest</span><strong>{quest.number} / {String(quests.length).padStart(2, "0")}</strong></div>
           <ol>
-            {QUESTS.map((item, index) => (
+            {quests.map((item, index) => (
               <li
                 key={item.id}
                 className={
@@ -1499,14 +1507,14 @@ export function Game() {
             )}
             {progress.phase === "reward" && (
               <button className="button button-yellow" type="button" onClick={handleContinue}>
-                {progress.currentQuest === QUESTS.length - 1 ? "Reopen the museum" : "Continue to next object"}
+                {progress.currentQuest === quests.length - 1 ? "Complete the field study" : "Continue to next object"}
                 <span aria-hidden="true">→</span>
               </button>
             )}
           </div>
         </footer>
       </main>
-      <PrincipleJournal dialogRef={dialogRef} progress={progress} onClose={closeJournal} />
+      <PrincipleJournal dialogRef={dialogRef} progress={progress} quests={quests} onClose={closeJournal} />
     </>
   );
 }

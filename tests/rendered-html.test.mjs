@@ -25,16 +25,17 @@ async function render() {
   );
 }
 
-test("server-renders the finished museum game shell", async () => {
+test("server-renders the book-to-RPG library shell", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<title>The City of Misfit Things<\/title>/i);
-  assert.match(html, /Interactive learning RPG/i);
-  assert.match(html, /Ordinary objects have begun misleading the city/i);
-  assert.match(html, /Six-object apprenticeship/i);
+  assert.match(html, /Agentic learning studio/i);
+  assert.match(html, /Turn a design book into a world you can practice/i);
+  assert.match(html, /The City of Misfit Things/i);
+  assert.match(html, /Transform book into RPG/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
@@ -67,7 +68,7 @@ test("ships six quests, local progress, 3D inspection, and narration", async () 
   assert.match(inspector, /gate-inspector-fallback/);
   assert.match(game, /false-handle-gate\.png/);
   assert.match(game, /prefers-reduced-motion|Principle journal/i);
-  assert.match(page, /<Game \/>/);
+  assert.match(page, /<BookRpgApp \/>/);
   assert.match(layout, /title: "The City of Misfit Things"/);
   assert.match(css, /--yellow: #f0ca08/);
   assert.match(css, /\.gate-inspector-canvas/);
@@ -80,4 +81,23 @@ test("ships six quests, local progress, 3D inspection, and narration", async () 
   await access(new URL("../public/audio/unsolved-investigation.LICENSE.txt", import.meta.url));
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
   await assert.rejects(access(new URL("public/favicon.svg", root)));
+});
+
+test("ships the one-shot PDF-to-RPG generation flow", async () => {
+  const [shell, route, gamePackage] = await Promise.all([
+    readFile(new URL("../app/BookRpgApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/generate-game/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/game-package.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(shell, /accept="application\/pdf,.pdf"/);
+  assert.match(shell, /I own this book or have permission to use it/);
+  assert.match(shell, /design-book-rpg-library:v1/);
+  assert.match(route, /OPENAI_API_KEY/);
+  assert.match(route, /input_file/);
+  assert.match(route, /json_schema/);
+  assert.match(route, /store: false/);
+  assert.match(gamePackage, /minItems: 4/);
+  assert.match(gamePackage, /maxItems: 9/);
+  assert.match(gamePackage, /sourceAnchors/);
 });
