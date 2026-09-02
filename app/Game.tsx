@@ -776,43 +776,63 @@ export function Game() {
   const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as Partial<Progress>;
-        const completed = Array.isArray(saved.completed)
-          ? saved.completed.filter((id): id is string => QUESTS.some((quest) => quest.id === id))
-          : [];
-        const principles = Array.isArray(saved.principles)
-          ? saved.principles.filter((id): id is string => QUESTS.some((quest) => quest.id === id))
-          : [];
-        setProgress({
-          version: 1,
-          currentQuest: Math.max(
-            0,
-            Math.min(QUESTS.length - 1, Number(saved.currentQuest) || 0),
-          ),
-          phase: PHASES.includes(saved.phase as Phase)
-            ? (saved.phase as Phase)
-            : "inspect",
-          xp: Math.max(0, Math.min(MAX_XP, Number(saved.xp) || 0)),
-          completed,
-          principles,
-        });
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const saved = JSON.parse(raw) as Partial<Progress>;
+          const completed = Array.isArray(saved.completed)
+            ? saved.completed.filter((id): id is string => QUESTS.some((quest) => quest.id === id))
+            : [];
+          const principles = Array.isArray(saved.principles)
+            ? saved.principles.filter((id): id is string => QUESTS.some((quest) => quest.id === id))
+            : [];
+          setProgress({
+            version: 1,
+            currentQuest: Math.max(
+              0,
+              Math.min(QUESTS.length - 1, Number(saved.currentQuest) || 0),
+            ),
+            phase: PHASES.includes(saved.phase as Phase)
+              ? (saved.phase as Phase)
+              : "inspect",
+            xp: Math.max(0, Math.min(MAX_XP, Number(saved.xp) || 0)),
+            completed,
+            principles,
+          });
+        }
+      } catch {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } finally {
+        setHydrated(true);
       }
-    } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } finally {
-      setHydrated(true);
-    }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    const savedPreference = window.localStorage.getItem(AUDIO_PREFERENCE_KEY);
-    if (savedPreference === "on" || savedPreference === "off") {
-      setAudioPreference(savedPreference);
-    }
-    if (audioRef.current) audioRef.current.volume = AMBIENT_VOLUME;
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      const savedPreference = window.localStorage.getItem(AUDIO_PREFERENCE_KEY);
+      if (savedPreference === "on" || savedPreference === "off") {
+        setAudioPreference(savedPreference);
+      }
+      if (audioRef.current) audioRef.current.volume = AMBIENT_VOLUME;
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -1265,7 +1285,7 @@ export function Game() {
           <aside className="decision-rail">
             {progress.phase === "inspect" && (
               <div className="rail-section">
-                <span className="eyebrow">Curator's lens</span>
+                <span className="eyebrow">Curator&apos;s lens</span>
                 <h2>Observe before explaining.</h2>
                 <ol className="observation-list">
                   {quest.observationTools.map((tool, index) => (
