@@ -338,7 +338,7 @@ const QUESTS: Quest[] = [
     principle: {
       name: "Constraints",
       summary:
-        "Physical fit, cultural conventions, semantic meaning, and logical remaining choices rule out errors before they happen.",
+        "Constraints limit what people can do, making mistakes harder to make. A SIM card’s notched corner ensures it fits into its tray only in the correct orientation.",
     },
   },
   {
@@ -417,7 +417,7 @@ const QUESTS: Quest[] = [
     title: "The Kiosk of the Wrong Problem",
     gallery: "Civic gallery · Final commission",
     story:
-      "At the museum entrance, visitors use this kiosk to choose exhibits and create a walking route through the galleries. The director asks you to enlarge the HELP button, but visitors actually struggle to add stops, understand how their choices change the route, recover after a wrong turn, and reach controls placed too high.",
+      "At the museum entrance, visitors use this kiosk to choose exhibits and create a walking route through the galleries. The director asks you to enlarge the HELP button, but visitors actually struggle to add stops, understand how their choices change the route, and reach controls placed too high. Is changing the HELP button the right solution?",
     objective:
       "Find what visitors actually need, try several route-planning designs, and test one that people with different abilities can use to plan a route and recover from a wrong turn.",
     clue:
