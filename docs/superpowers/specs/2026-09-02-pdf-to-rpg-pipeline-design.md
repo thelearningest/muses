@@ -22,8 +22,8 @@ Extend The City of Misfit Things into a real web application where a user upload
 The application remains a single Next.js project with one reusable game engine.
 
 1. The browser collects a PDF and a rights-confirmation checkbox.
-2. A server route validates the request and extracts text with page boundaries.
-3. The route sends the extracted source and a fixed generation rubric to the OpenAI Responses API.
+2. A server route validates the request and passes the PDF as a native file input to the OpenAI Responses API.
+3. The request combines the PDF with a fixed generation rubric and strict output schema.
 4. The model returns one structured game package.
 5. The server validates the package. A small deterministic normalization pass fixes safe formatting issues; invalid substantive output fails with a retry message.
 6. The browser stores the valid game package and player progress in versioned local storage.
@@ -37,9 +37,13 @@ The OpenAI API key exists only in the server environment. Uploaded PDFs and extr
 
 Replace the initial entry point with a simple choice between playing the bundled example and generating a game. Generation requires a PDF, rights confirmation, and one submit action. Show an honest progress state while generation runs.
 
-### PDF extraction
+Treat this as a compact working surface rather than a marketing landing page. Constrain the page width, shorten the introductory hero, and keep the upload and local-library columns visible side by side at tablet widths. Stack them only on narrow mobile screens. Tighten panel padding and vertical gaps so the primary action and at least the start of the library remain visible without excessive scrolling.
 
-Use a server-compatible PDF text extractor that preserves page separation. Reject encrypted, empty, scanned, oversized, and malformed PDFs with a specific explanation.
+While generation is active, replace the disabled upload controls with a dedicated status panel. Show elapsed time, a progress bar that advances asymptotically and stops below completion until the server responds, and a short rolling activity log. The messages describe broad work stages—uploading the PDF, reading its structure, distilling lessons, designing quests, and preparing the game—but do not claim exact server-side progress. Explain that substantial books may take several minutes and keep the rest of the page stable during the wait.
+
+### PDF handling
+
+Use the OpenAI Responses API's native PDF input so page content and layout remain available without adding a separate extraction dependency. Reject empty, oversized, and malformed requests before generation. PDFs the model cannot read fail with a specific retry message.
 
 ### Game generator
 
