@@ -55,6 +55,9 @@ test("ships six quests, local progress, 3D inspection, and narration", async () 
   assert.match(game, /Turn background music (on|off)/);
   assert.match(game, /Play narration/);
   assert.match(game, /SpeechSynthesisUtterance/);
+  assert.match(game, /chooseNarrationVoice/);
+  assert.match(game, /Here is what the inspection revealed/);
+  assert.match(game, /Which explanation best matches that evidence/);
   assert.match(game, /NARRATION_DUCK_VOLUME/);
   assert.match(game, /<GateInspector3D/);
   assert.match(inspector, /WebGLRenderer/);

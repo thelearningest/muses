@@ -514,6 +514,38 @@ function isInteractiveTarget(target: EventTarget | null) {
   );
 }
 
+function lowercaseFirst(text: string) {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+function observationGuide(tools: string[]) {
+  const [first, second, third] = tools.map(lowercaseFirst);
+  return `Start by ${first}. Then ${second}. Finally, ${third}.`;
+}
+
+function chooseNarrationVoice(voices: SpeechSynthesisVoice[]) {
+  const englishVoices = voices.filter((voice) =>
+    voice.lang.toLowerCase().startsWith("en"),
+  );
+  const preferredNames = [
+    "Samantha",
+    "Daniel",
+    "Karen",
+    "Moira",
+    "Google US English",
+  ];
+
+  return (
+    englishVoices.find((voice) => /natural/i.test(voice.name)) ??
+    preferredNames
+      .map((name) => englishVoices.find((voice) => voice.name === name))
+      .find(Boolean) ??
+    englishVoices.find((voice) => voice.localService && /^en-US$/i.test(voice.lang)) ??
+    englishVoices.find((voice) => voice.localService) ??
+    englishVoices[0]
+  );
+}
+
 function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
   const revealed = phase !== "inspect";
   const repaired = phase === "reward";
@@ -897,18 +929,18 @@ export function Game() {
 
   const narrationText = useMemo(() => {
     if (progress.phase === "inspect") {
-      return `${quest.title}. ${quest.story} Objective: ${quest.objective} Inspection checklist: ${quest.observationTools.join(". ")}.`;
+      return `${quest.title}. ${quest.story} Your task is to ${lowercaseFirst(quest.objective)} ${observationGuide(quest.observationTools)}`;
     }
     if (progress.phase === "diagnose") {
-      return `${quest.title}. Inspection finding: ${feedback.text}`;
+      return `Here is what the inspection revealed. ${feedback.text} Which explanation best matches that evidence?`;
     }
     if (progress.phase === "repair") {
-      return `${quest.title}. Repair finding: ${feedback.text}`;
+      return `You found the cause. ${feedback.text} Now choose a repair that addresses it.`;
     }
     if (progress.phase === "reward") {
-      return `${quest.principle.name}. ${quest.principle.summary}`;
+      return `The repair worked. ${feedback.text} You added ${quest.principle.name} to your journal. ${quest.principle.summary}`;
     }
-    return "The museum apprenticeship is complete.";
+    return "The museum is ready to reopen. Your apprenticeship is complete.";
   }, [feedback.text, progress.phase, quest]);
 
   useEffect(() => {
@@ -956,10 +988,10 @@ export function Game() {
 
     speech.cancel();
     const utterance = new SpeechSynthesisUtterance(narrationText);
-    const englishVoice = speech.getVoices().find((voice) => voice.lang.toLowerCase().startsWith("en"));
+    const englishVoice = chooseNarrationVoice(speech.getVoices());
     if (englishVoice) utterance.voice = englishVoice;
-    utterance.rate = 0.92;
-    utterance.pitch = 0.96;
+    utterance.rate = 0.96;
+    utterance.pitch = 1;
     utterance.onend = () => {
       setNarrationState("idle");
       if (audioRef.current && soundEnabled) audioRef.current.volume = AMBIENT_VOLUME;
