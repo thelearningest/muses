@@ -1,7 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import type { Choice, GamePackage, Quest } from "./game-package";
+import type { Choice, GamePackage, Quest, VisualSpec } from "./game-package";
 
 const GateInspector3D = lazy(() =>
   import("./GateInspector3D").then((module) => ({ default: module.GateInspector3D })),
@@ -468,11 +468,43 @@ function freshProgress(): Progress {
   };
 }
 
-function rankForXP(xp: number, maxXp: number) {
+function rankForXP(xp: number, maxXp: number, generated: boolean) {
+  if (generated) {
+    if (xp >= maxXp) return { level: 4, title: "Design Practitioner" };
+    if (xp >= maxXp * 0.68) return { level: 3, title: "Systems Thinker" };
+    if (xp >= maxXp * 0.34) return { level: 2, title: "Field Researcher" };
+    return { level: 1, title: "Design Learner" };
+  }
   if (xp >= maxXp) return { level: 4, title: "Master Warden" };
   if (xp >= maxXp * 0.68) return { level: 3, title: "Design Warden" };
   if (xp >= maxXp * 0.34) return { level: 2, title: "Associate Curator" };
   return { level: 1, title: "Apprentice" };
+}
+
+function bookSpecificVisual(quest: Quest, index: number): VisualSpec {
+  const forms: Record<Quest["artifact"], VisualSpec["form"]> = {
+    gate: "portal",
+    switchboard: "network",
+    memory: "sequence",
+    constraints: "assembly",
+    console: "console",
+    kiosk: "display",
+  };
+  const correctRepair = quest.repairs.find((choice) => choice.correct);
+
+  return {
+    mode: index === 0 ? "3d" : "diagram",
+    form: forms[quest.artifact],
+    accent: (["red", "yellow", "green"] as const)[index % 3],
+    title: quest.title,
+    problemLabel: quest.clue,
+    repairLabel: correctRepair?.label ?? quest.principle.name,
+    elements: [
+      quest.observationTools[0] ?? "User",
+      quest.observationTools[1] ?? "Task",
+      quest.observationTools[2] ?? "Evidence",
+    ],
+  };
 }
 
 function isInteractiveTarget(target: EventTarget | null) {
@@ -777,7 +809,13 @@ function SoundToggle({
 }
 
 export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void }) {
-  const quests = useMemo(() => game?.quests ?? QUESTS, [game]);
+  const quests = useMemo(
+    () => game?.quests.map((quest, index) => ({
+      ...quest,
+      visual: quest.visual ?? bookSpecificVisual(quest, index),
+    })) ?? QUESTS,
+    [game],
+  );
   const maxXp = useMemo(() => quests.reduce((total, quest) => total + quest.xp, 0), [quests]);
   const storageKey = `design-warden-progress:v2:${game?.id ?? "city-of-misfit-things"}`;
   const [progress, setProgress] = useState<Progress>(freshProgress);
@@ -902,7 +940,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
     progress.currentQuest > 0 ||
     progress.phase !== "inspect" ||
     progress.completed.length > 0;
-  const rank = rankForXP(progress.xp, maxXp);
+  const rank = rankForXP(progress.xp, maxXp, Boolean(game));
   const xpPercent = Math.round((progress.xp / maxXp) * 100);
   const quest = quests[progress.currentQuest];
   const phaseName =
@@ -934,8 +972,10 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
     if (progress.phase === "reward") {
       return `The repair worked. ${feedback.text} You added ${quest.principle.name} to your journal. ${quest.principle.summary}`;
     }
-    return "The museum is ready to reopen. Your apprenticeship is complete.";
-  }, [feedback.text, progress.phase, quest]);
+    return game
+      ? `Your field study of ${game.sourceTitle} is complete.`
+      : "The museum is ready to reopen. Your apprenticeship is complete.";
+  }, [feedback.text, game, progress.phase, quest]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1050,7 +1090,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
   };
 
   const startFresh = () => {
-    if (hasProgress && !window.confirm("Start over and replace your saved museum progress?")) {
+    if (hasProgress && !window.confirm(`Start over and replace your saved ${game ? "book study" : "museum"} progress?`)) {
       return;
     }
     if (audioPreference !== "off") enableAmbientSound();
@@ -1224,19 +1264,25 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
                 ).
               </p>
             </div>
-            <div className="intro-artifact">
-              <span className="artifact-index">COLLECTION 01 / NORTH GATE</span>
-              <img
-                src="/assets/false-handle-gate.png"
-                alt="A lacquer-red gate displayed against an ivory museum wall."
-                width="1536"
-                height="1024"
-                loading="eager"
-                fetchPriority="high"
-              />
+            <div className={`intro-artifact${generated ? " intro-artifact-generated" : ""}`}>
+              <span className="artifact-index">{generated ? quest.gallery : "COLLECTION 01 / NORTH GATE"}</span>
+              {generated && quest.visual ? (
+                <Suspense fallback={<div className="generated-artifact-loading">Building a book-specific study object…</div>}>
+                  <GeneratedArtifact visual={quest.visual} revealed={false} repaired={false} />
+                </Suspense>
+              ) : (
+                <img
+                  src="/assets/false-handle-gate.png"
+                  alt="A lacquer-red gate displayed against an ivory museum wall."
+                  width="1536"
+                  height="1024"
+                  loading="eager"
+                  fetchPriority="high"
+                />
+              )}
               <div className="intro-caption">
-                <span>Beautiful object</span>
-                <span>Misleading action</span>
+                <span>{generated ? quest.visual?.elements[0] : "Beautiful object"}</span>
+                <span>{generated ? quest.visual?.elements[2] : "Misleading action"}</span>
               </div>
             </div>
           </section>
@@ -1253,8 +1299,8 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
         <main className="completion-shell">
           <header className="completion-header">
             <div className="brand-mark brand-mark-light">
-              <span>Museum</span>
-              <strong>Misfit Things</strong>
+              <span>{game ? "Design learning lab" : "Museum"}</span>
+              <strong>{game ? "Playable Books" : "Misfit Things"}</strong>
             </div>
             <div className="completion-header-tools">
               <span className="completion-status">Apprenticeship record · Complete</span>
@@ -1263,8 +1309,8 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
           </header>
           <section className="completion-grid">
             <div className="completion-copy">
-              <span className="eyebrow eyebrow-yellow">Final commission restored</span>
-              <h1>The museum reopens.</h1>
+              <span className="eyebrow eyebrow-yellow">{game ? "Field study complete" : "Final commission restored"}</span>
+              <h1>{game ? `You can now apply ${game.sourceTitle}.` : "The museum reopens."}</h1>
               <p>
                 You did not memorize a list of rules. You learned to observe behavior, locate the
                 design burden, test a repair, and let real outcomes decide whether it worked.
@@ -1272,7 +1318,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
               <div className="completion-score">
                 <div><strong>{progress.xp}</strong><span>Total XP</span></div>
                 <div><strong>{progress.principles.length}</strong><span>Principles</span></div>
-                <div><strong>{rank.level}</strong><span>Warden level</span></div>
+                <div><strong>{rank.level}</strong><span>{game ? "Practice level" : "Warden level"}</span></div>
               </div>
               <div className="completion-actions">
                 <button className="button button-yellow" type="button" onClick={openJournal}>
@@ -1282,7 +1328,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
                   className="button button-dark-outline"
                   type="button"
                   onClick={() => {
-                    if (window.confirm("Replay the museum and replace your completed progress?")) {
+                    if (window.confirm(`Replay this ${game ? "book study" : "museum"} and replace your completed progress?`)) {
                       resetProgress(true);
                     }
                   }}
@@ -1416,7 +1462,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
           <aside className="decision-rail">
             {progress.phase === "inspect" && (
               <div className="rail-section">
-                <span className="eyebrow">Curator&apos;s lens</span>
+                <span className="eyebrow">{game ? "User and task" : "Curator’s lens"}</span>
                 <h2>Observe before explaining.</h2>
                 <ol className="observation-list">
                   {quest.observationTools.map((tool, index) => (
