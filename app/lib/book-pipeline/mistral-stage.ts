@@ -26,7 +26,10 @@ type RepositoryPort = Pick<
   | "setMistralReferences"
   | "markTerminal"
   | "markRecoverable"
->;
+> &
+  Partial<
+    Pick<BookJobRepository, "reserveProviderCost" | "reconcileProviderCost">
+  >;
 
 type StorePort = {
   putJson(jobId: string, path: string, value: unknown, expiresAt: number): Promise<void>;
@@ -65,7 +68,12 @@ export async function advanceOcrStage(input: {
   provider: OcrProvider;
   repository: RepositoryPort;
   store: StorePort;
-  config: { model: string; maxPages: number };
+  config: {
+    model: string;
+    maxPages: number;
+    reserveCostUnits?: number;
+    maxCostUnits?: number;
+  };
   sourceUrl: string;
   now: number;
 }): Promise<OcrAdvanceResult> {
@@ -80,6 +88,26 @@ export async function advanceOcrStage(input: {
       now,
     });
     if (!claimed) return { outcome: "waiting", status: "uploaded" };
+    if (
+      config.reserveCostUnits &&
+      config.maxCostUnits &&
+      repository.reserveProviderCost &&
+      !(await repository.reserveProviderCost(
+        job.id,
+        config.reserveCostUnits,
+        config.maxCostUnits,
+        now,
+      ))
+    ) {
+      await repository.markTerminal(
+        job.id,
+        "failed_terminal",
+        "global_capacity_reached",
+        now,
+        job.expiresAt,
+      );
+      return { outcome: "terminal", status: "failed_terminal" };
+    }
     try {
       const batch = await provider.submit({
         customId: job.id,
@@ -214,6 +242,14 @@ export async function advanceOcrStage(input: {
       return { outcome: "terminal", status: "failed_terminal" };
     }
     await store.putJson(job.id, "canonical-book.json", canonical, job.expiresAt);
+    if (config.reserveCostUnits && repository.reconcileProviderCost) {
+      await repository.reconcileProviderCost(
+        job.id,
+        config.reserveCostUnits,
+        Math.max(1, canonical.source.pageCount),
+        now,
+      );
+    }
     await repository.commitStage({
       jobId: job.id,
       expectedStatus: "canonicalizing",

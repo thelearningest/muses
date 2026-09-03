@@ -10,6 +10,10 @@ export type BookPipelineConfig = {
   sourceRecoveryHours: number;
   maxVisualPages: number;
   maxQuestRepairAttempts: number;
+  evidenceSectionsPerBatch: number;
+  maxProviderCostUnitsPerJob: number;
+  ocrCostReserveUnits: number;
+  mapCostReserveUnits: number;
   ocrModel: string;
   mapModel: string;
   mapReasoningEffort: ReasoningEffort;
@@ -30,6 +34,10 @@ export const DEFAULT_BOOK_PIPELINE_CONFIG = Object.freeze({
   sourceRecoveryHours: 24,
   maxVisualPages: 12,
   maxQuestRepairAttempts: 2,
+  evidenceSectionsPerBatch: 3,
+  maxProviderCostUnitsPerJob: 20_000,
+  ocrCostReserveUnits: 4_000,
+  mapCostReserveUnits: 1_000,
   ocrModel: "mistral-ocr-4-1",
   mapModel: "gpt-5.4-mini",
   mapReasoningEffort: "low",
@@ -49,6 +57,10 @@ const LIMITS = {
   sourceRecoveryHours: { min: 1, max: 24 },
   maxVisualPages: { min: 1, max: 12 },
   maxQuestRepairAttempts: { min: 1, max: 2 },
+  evidenceSectionsPerBatch: { min: 1, max: 6 },
+  maxProviderCostUnitsPerJob: { min: 1_000, max: 100_000 },
+  ocrCostReserveUnits: { min: 100, max: 20_000 },
+  mapCostReserveUnits: { min: 100, max: 10_000 },
 } as const;
 
 const REASONING_EFFORTS = new Set<ReasoningEffort>([
@@ -138,6 +150,26 @@ export function parseBookPipelineConfig(
       env.BOOK_MAX_QUEST_REPAIR_ATTEMPTS,
       DEFAULT_BOOK_PIPELINE_CONFIG.maxQuestRepairAttempts,
       LIMITS.maxQuestRepairAttempts,
+    ),
+    evidenceSectionsPerBatch: boundedInteger(
+      env.BOOK_EVIDENCE_SECTIONS_PER_BATCH,
+      DEFAULT_BOOK_PIPELINE_CONFIG.evidenceSectionsPerBatch,
+      LIMITS.evidenceSectionsPerBatch,
+    ),
+    maxProviderCostUnitsPerJob: boundedInteger(
+      env.BOOK_MAX_PROVIDER_COST_UNITS,
+      DEFAULT_BOOK_PIPELINE_CONFIG.maxProviderCostUnitsPerJob,
+      LIMITS.maxProviderCostUnitsPerJob,
+    ),
+    ocrCostReserveUnits: boundedInteger(
+      env.BOOK_OCR_COST_RESERVE_UNITS,
+      DEFAULT_BOOK_PIPELINE_CONFIG.ocrCostReserveUnits,
+      LIMITS.ocrCostReserveUnits,
+    ),
+    mapCostReserveUnits: boundedInteger(
+      env.BOOK_MAP_COST_RESERVE_UNITS,
+      DEFAULT_BOOK_PIPELINE_CONFIG.mapCostReserveUnits,
+      LIMITS.mapCostReserveUnits,
     ),
     ocrModel: modelName(env.MISTRAL_OCR_MODEL, DEFAULT_BOOK_PIPELINE_CONFIG.ocrModel),
     mapModel: modelName(env.OPENAI_MAP_MODEL, DEFAULT_BOOK_PIPELINE_CONFIG.mapModel),

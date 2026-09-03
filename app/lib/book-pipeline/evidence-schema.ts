@@ -1,0 +1,77 @@
+const stringArray = {
+  type: "array",
+  items: { type: "string" },
+} as const;
+
+export const EVIDENCE_CARDS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["cards"],
+  properties: {
+    cards: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "sectionId",
+          "concept",
+          "supportedClaim",
+          "sources",
+          "playerVerbs",
+          "applicableProcess",
+          "successfulExamples",
+          "failureModes",
+          "misconceptions",
+          "prerequisites",
+          "causalLinks",
+          "tradeoffs",
+          "visualReferenceIds",
+          "importanceSignals",
+          "confidence",
+          "uncertainty",
+          "contradictions",
+        ],
+        properties: {
+          id: { type: "string", minLength: 1 },
+          sectionId: { type: "string", minLength: 1 },
+          concept: { type: "string", minLength: 1 },
+          supportedClaim: { type: "string", minLength: 1 },
+          sources: {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["pageStart", "pageEnd", "canonicalBlockIds", "boundedExcerpt"],
+              properties: {
+                pageStart: { type: "integer", minimum: 0 },
+                pageEnd: { type: "integer", minimum: 0 },
+                canonicalBlockIds: {
+                  type: "array",
+                  minItems: 1,
+                  items: { type: "string", minLength: 1 },
+                },
+                boundedExcerpt: { type: "string", maxLength: 480 },
+              },
+            },
+          },
+          playerVerbs: stringArray,
+          applicableProcess: stringArray,
+          successfulExamples: stringArray,
+          failureModes: stringArray,
+          misconceptions: stringArray,
+          prerequisites: stringArray,
+          causalLinks: stringArray,
+          tradeoffs: stringArray,
+          visualReferenceIds: stringArray,
+          importanceSignals: stringArray,
+          confidence: { type: "number", minimum: 0, maximum: 1 },
+          uncertainty: stringArray,
+          contradictions: stringArray,
+        },
+      },
+    },
+  },
+} as const;
