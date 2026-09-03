@@ -1,8 +1,9 @@
 import { BookArtifactStore } from "@/app/lib/book-pipeline/artifact-store";
 import { buildBookMapStage } from "@/app/lib/book-pipeline/book-map-stage";
 import { parseBookPipelineConfig } from "@/app/lib/book-pipeline/config";
-import type { BookMap, CanonicalBook, EvidenceCard } from "@/app/lib/book-pipeline/contracts";
+import type { BookMap, CanonicalBook, EvidenceCard, QuestEvidenceContract } from "@/app/lib/book-pipeline/contracts";
 import { mapEvidenceBatch } from "@/app/lib/book-pipeline/evidence-stage";
+import { generateGameStage } from "@/app/lib/book-pipeline/generation-stage";
 import { BookJobRepository } from "@/app/lib/book-pipeline/job-repository";
 import { advanceOcrStage } from "@/app/lib/book-pipeline/mistral-stage";
 import { MistralOcrProvider } from "@/app/lib/book-pipeline/providers/mistral";
@@ -16,6 +17,8 @@ import {
   readBearerToken,
 } from "@/app/lib/book-pipeline/security";
 import { advanceVisualStage, MistralVisualAnnotationProvider } from "@/app/lib/book-pipeline/visual-stage";
+import { verifyNextQuestStage } from "@/app/lib/book-pipeline/verification-stage";
+import type { GameContent } from "@/app/game-package";
 
 type Context = { params: Promise<{ jobId: string }> };
 
@@ -137,6 +140,47 @@ export async function POST(request: Request, context: Context) {
         repository,
         store,
         model: config.embeddingModel,
+        now,
+      });
+      return Response.json(result, { status: result.outcome === "interrupted" ? 409 : 200, headers: { "cache-control": "no-store" } });
+    }
+    if (job.status === "generating_game") {
+      const [bookMap, evidence] = await Promise.all([
+        store.getJson<BookMap>(job.id, "book-map.json"),
+        store.getJson<{ contracts: QuestEvidenceContract[] }>(job.id, "quest-evidence.json"),
+      ]);
+      if (!bookMap || !evidence) return Response.json({ error: { code: "pipeline_artifact_missing" } }, { status: 409 });
+      const result = await generateGameStage({
+        job,
+        bookMap,
+        contracts: evidence.contracts,
+        provider: new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")),
+        repository,
+        store,
+        config: {
+          model: config.generationModel,
+          reasoningEffort: config.generationReasoningEffort,
+          reserveCostUnits: Math.max(config.mapCostReserveUnits, 4_000),
+          maxCostUnits: config.maxProviderCostUnitsPerJob,
+        },
+        now,
+      });
+      return Response.json(result, { status: result.outcome === "interrupted" ? 409 : 200, headers: { "cache-control": "no-store" } });
+    }
+    if (job.status === "verifying_quests") {
+      const [draft, evidence] = await Promise.all([
+        store.getJson<{ game: GameContent }>(job.id, "game-draft.json"),
+        store.getJson<{ contracts: QuestEvidenceContract[] }>(job.id, "quest-evidence.json"),
+      ]);
+      if (!draft || !evidence) return Response.json({ error: { code: "pipeline_artifact_missing" } }, { status: 409 });
+      const result = await verifyNextQuestStage({
+        job,
+        game: draft.game,
+        contracts: evidence.contracts,
+        provider: new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")),
+        repository,
+        store,
+        config: { model: config.verificationModel, reasoningEffort: config.verificationReasoningEffort, maxRepairAttempts: config.maxQuestRepairAttempts },
         now,
       });
       return Response.json(result, { status: result.outcome === "interrupted" ? 409 : 200, headers: { "cache-control": "no-store" } });

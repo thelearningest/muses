@@ -79,6 +79,64 @@ const choiceSchema = {
   },
 } as const;
 
+export const QUEST_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id", "number", "title", "gallery", "story", "objective", "clue", "artifact", "xp",
+    "observationTools", "diagnosis", "repairs", "principle", "visual", "sourceAnchors",
+  ],
+  properties: {
+    id: stringField,
+    number: stringField,
+    title: stringField,
+    gallery: stringField,
+    story: stringField,
+    objective: stringField,
+    clue: stringField,
+    artifact: { type: "string", enum: ["gate", "switchboard", "memory", "constraints", "console", "kiosk"] },
+    xp: { type: "integer", minimum: 25, maximum: 200 },
+    observationTools: { type: "array", minItems: 3, maxItems: 3, items: stringField },
+    diagnosis: { type: "array", minItems: 3, maxItems: 3, items: choiceSchema },
+    repairs: { type: "array", minItems: 3, maxItems: 3, items: choiceSchema },
+    principle: {
+      type: "object",
+      additionalProperties: false,
+      required: ["name", "summary"],
+      properties: { name: stringField, summary: stringField },
+    },
+    visual: {
+      type: "object",
+      additionalProperties: false,
+      required: ["mode", "form", "accent", "title", "problemLabel", "repairLabel", "elements"],
+      properties: {
+        mode: { type: "string", enum: ["diagram", "3d"] },
+        form: { type: "string", enum: ["portal", "console", "assembly", "network", "sequence", "display"] },
+        accent: { type: "string", enum: ["red", "yellow", "green"] },
+        title: stringField,
+        problemLabel: stringField,
+        repairLabel: stringField,
+        elements: { type: "array", minItems: 3, maxItems: 3, items: stringField },
+      },
+    },
+    sourceAnchors: {
+      type: "array",
+      minItems: 1,
+      maxItems: 3,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["label", "pageStart", "pageEnd"],
+        properties: {
+          label: stringField,
+          pageStart: { type: "integer", minimum: 1 },
+          pageEnd: { type: "integer", minimum: 1 },
+        },
+      },
+    },
+  },
+} as const;
+
 export const GAME_CONTENT_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -92,99 +150,7 @@ export const GAME_CONTENT_SCHEMA = {
       type: "array",
       minItems: 4,
       maxItems: 9,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "id",
-          "number",
-          "title",
-          "gallery",
-          "story",
-          "objective",
-          "clue",
-          "artifact",
-          "xp",
-          "observationTools",
-          "diagnosis",
-          "repairs",
-          "principle",
-          "visual",
-          "sourceAnchors",
-        ],
-        properties: {
-          id: stringField,
-          number: stringField,
-          title: stringField,
-          gallery: stringField,
-          story: stringField,
-          objective: stringField,
-          clue: stringField,
-          artifact: {
-            type: "string",
-            enum: ["gate", "switchboard", "memory", "constraints", "console", "kiosk"],
-          },
-          xp: { type: "integer", minimum: 25, maximum: 200 },
-          observationTools: {
-            type: "array",
-            minItems: 3,
-            maxItems: 3,
-            items: stringField,
-          },
-          diagnosis: {
-            type: "array",
-            minItems: 3,
-            maxItems: 3,
-            items: choiceSchema,
-          },
-          repairs: {
-            type: "array",
-            minItems: 3,
-            maxItems: 3,
-            items: choiceSchema,
-          },
-          principle: {
-            type: "object",
-            additionalProperties: false,
-            required: ["name", "summary"],
-            properties: { name: stringField, summary: stringField },
-          },
-          visual: {
-            type: "object",
-            additionalProperties: false,
-            required: ["mode", "form", "accent", "title", "problemLabel", "repairLabel", "elements"],
-            properties: {
-              mode: { type: "string", enum: ["diagram", "3d"] },
-              form: { type: "string", enum: ["portal", "console", "assembly", "network", "sequence", "display"] },
-              accent: { type: "string", enum: ["red", "yellow", "green"] },
-              title: stringField,
-              problemLabel: stringField,
-              repairLabel: stringField,
-              elements: {
-                type: "array",
-                minItems: 3,
-                maxItems: 3,
-                items: stringField,
-              },
-            },
-          },
-          sourceAnchors: {
-            type: "array",
-            minItems: 1,
-            maxItems: 3,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["label", "pageStart", "pageEnd"],
-              properties: {
-                label: stringField,
-                pageStart: { type: "integer", minimum: 1 },
-                pageEnd: { type: "integer", minimum: 1 },
-              },
-            },
-          },
-        },
-      },
+      items: QUEST_SCHEMA,
     },
   },
 } as const;
@@ -258,6 +224,10 @@ function validQuest(value: unknown): value is Quest {
         Number(anchor.pageEnd) >= Number(anchor.pageStart),
     )
   );
+}
+
+export function parseQuest(value: unknown): Quest | null {
+  return validQuest(value) ? value : null;
 }
 
 export function parseGameContent(value: unknown): GameContent | null {
