@@ -1,6 +1,7 @@
 import type { ReasoningEffort } from "../config";
 
 const RESPONSES_URL = "https://api.openai.com/v1/responses";
+const EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
 
 export type StructuredResponse<T> = {
   responseId: string;
@@ -111,5 +112,24 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
         totalTokens: Number(usage.total_tokens ?? 0),
       },
     };
+  }
+}
+
+export class OpenAiEmbeddingsProvider {
+  constructor(
+    private readonly apiKey: string,
+    private readonly fetcher: Fetcher = fetch,
+  ) {}
+
+  async embed(input: { model: string; values: string[] }): Promise<{ vectors: number[][]; requestId?: string }> {
+    const response = await this.fetcher(EMBEDDINGS_URL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({ model: input.model, input: input.values, encoding_format: "float" }),
+    });
+    if (!response.ok) throw new Error(`OpenAI embedding request failed with status ${response.status}`);
+    const body = await response.json() as { data?: Array<{ index: number; embedding: number[] }> };
+    const vectors = [...(body.data ?? [])].sort((a, b) => a.index - b.index).map((item) => item.embedding);
+    return { vectors, requestId: response.headers.get("x-request-id") ?? undefined };
   }
 }
