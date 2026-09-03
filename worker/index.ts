@@ -1,10 +1,19 @@
 /** Cloudflare Worker entry point for The City of Misfit Things. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import type {
+  D1DatabaseBinding,
+  R2BucketBinding,
+} from "../app/lib/book-pipeline/runtime-env";
+
+interface AssetFetcher {
+  fetch(request: Request): Promise<Response>;
+}
 
 interface Env {
-  ASSETS: Fetcher;
-  DB: D1Database;
+  ASSETS: AssetFetcher;
+  DB: D1DatabaseBinding;
+  BOOK_JOBS: R2BucketBinding;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
