@@ -1,21 +1,17 @@
-# The City of Misfit Things
+# Playable Books
 
-A browser RPG studio for learning human-centered design. Play the bundled
-six-quest museum apprenticeship or upload a design-book PDF and generate a new,
-source-grounded field study using the same interaction system.
+A browser RPG studio that turns an authorized PDF into a source-grounded learning game. The bundled six-quest example remains playable without external services. New books use a resumable, temporary pipeline designed for large scanned PDFs.
 
-## Experience
+## How book generation works
 
-- six original quests covering discoverability, mapping and feedback, knowledge
-  in the world, constraints, error recovery, and human-centered design
-- immediate explanatory feedback with no score penalty for experimentation
-- a WebGL gate inspector with orbit, zoom, focused views, and a static fallback
-- optional browser-voice narration that lowers the ambient soundtrack while speaking
-- a responsive editorial museum interface with keyboard and reduced-motion support
-- device-local progress saved under `design-warden-progress:v1`
-- one-shot PDF-to-RPG generation with 4–9 source-anchored quests
-- book-specific procedural visuals for every quest, including at least one interactive 3D design exercise
-- a device-local library of generated games
+1. The browser creates a capability-protected job and streams the PDF to temporary R2 storage.
+2. Mistral Batch OCR extracts ordered blocks, page anchors, confidence, and visual references.
+3. OpenAI receives bounded sections—not the PDF—to build evidence cards.
+4. Deterministic book mapping, selective visual annotation, and lexical-plus-embedding retrieval create four to nine quest evidence contracts.
+5. OpenAI generates from those compact contracts. Each quest is independently verified and only a failing quest may be repaired, at most twice.
+6. The validated game is saved in the browser. Acknowledgment removes the temporary server artifacts.
+
+The public service allows one active job per identity, at most 5 attempts per browser or network in a rolling 24-hour window, and 20 admitted jobs per UTC day. Uploaded and intermediate files carry a maximum 24-hour recovery expiry.
 
 ## Development
 
@@ -26,38 +22,63 @@ npm install
 npm run dev
 ```
 
-PDF generation requires an OpenAI API key on the server:
+The application is built for OpenAI Sites with these bindings in `.openai/hosting.json`:
 
-```bash
-OPENAI_API_KEY=your_key_here
+- D1 binding `DB` for job state, quotas, cursors, and provider references
+- R2 binding `BOOK_JOBS` for temporary PDFs and intermediate JSON artifacts
+
+Apply both SQL migrations from `drizzle/` to the bound D1 database before enabling generation.
+
+### Required server secrets
+
+```text
+MISTRAL_API_KEY=
+OPENAI_API_KEY=
+TURNSTILE_SECRET_KEY=
+BOOK_CAPABILITY_HMAC_KEY=
+BOOK_IDENTITY_HMAC_KEY=
+BOOK_PROVIDER_URL_HMAC_KEY=
 ```
 
-The default generation profile is `gpt-5.6-sol` with high reasoning and Fast
-mode. Override it with `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT`, or
-`OPENAI_SERVICE_TIER`. The upload route
-accepts text-based PDFs up to 50 MB. Generated games and player progress stay in
-the browser's local storage; the application does not retain uploaded PDFs.
+Use separate random values of at least 16 characters for the three HMAC keys. Configure the public widget key as:
 
-Run the production build and rendered-output tests before you commit:
+```text
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=
+```
+
+For local development only, Cloudflare's always-pass Turnstile test site key is used automatically when no public key is set. Pair it with Cloudflare's always-pass test secret (`1x0000000000000000000000000000000AA`) locally. Never use test keys for a public deployment.
+
+### Optional bounded configuration
+
+```text
+BOOK_GENERATION_ENABLED=true
+BOOK_MAX_PDF_BYTES=52428800
+BOOK_MAX_PAGES=300
+BOOK_ATTEMPTS_PER_24_HOURS=5
+BOOK_GLOBAL_JOBS_PER_UTC_DAY=20
+BOOK_SOURCE_RECOVERY_HOURS=24
+BOOK_MAX_VISUAL_PAGES=12
+BOOK_MAX_QUEST_REPAIR_ATTEMPTS=2
+BOOK_EVIDENCE_SECTIONS_PER_BATCH=3
+BOOK_MAX_PROVIDER_COST_UNITS=20000
+MISTRAL_OCR_MODEL=mistral-ocr-4-1
+OPENAI_MAP_MODEL=gpt-5.4-mini
+OPENAI_MODEL=gpt-5.6-sol
+OPENAI_VERIFY_MODEL=gpt-5.4-mini
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+```
+
+Unsafe values are rejected back to conservative defaults. Do not expose server secrets through `NEXT_PUBLIC_*` variables.
+
+## Validation
 
 ```bash
+npm run test:unit
 npm test
 npm run lint
+npx tsc --noEmit --incremental false
 ```
 
-The default scripts use vinext and package the site for OpenAI Sites. The MVP
-uses no database or application accounts. OpenAI API usage is billed separately.
+The generation API depends on Sites-managed D1 and R2 bindings and is intentionally Sites-only. The legacy `/api/generate-game` whole-PDF route returns `410 Gone`; clients must use `/api/book-jobs`.
 
-## Vercel deployment
-
-Use the native Next.js scripts to test the Vercel build locally:
-
-```bash
-npm run dev:vercel
-npm run build:vercel
-npm run start:vercel
-```
-
-`vercel.json` selects `npm run build:vercel` during deployment. The Vercel
-TypeScript configuration checks the application code without loading the
-OpenAI Sites and Cloudflare build files.
+Before public launch, configure an R2 lifecycle rule as a defense-in-depth backstop that deletes the `book-jobs/` prefix after one day, apply the D1 migrations, set production provider/Turnstile/HMAC secrets, and keep `BOOK_GENERATION_ENABLED=false` until those checks pass.

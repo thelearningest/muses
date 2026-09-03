@@ -36,6 +36,8 @@ test("server-renders the book-to-RPG library shell", async () => {
   assert.match(html, /Turn what you read into design decisions/i);
   assert.match(html, /The City of Misfit Things/i);
   assert.match(html, /Create my learning game/i);
+  assert.match(html, /5 attempts per browser or network in any 24 hours/i);
+  assert.match(html, /processed temporarily by Mistral and OpenAI/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
@@ -83,20 +85,26 @@ test("ships six quests, local progress, 3D inspection, and narration", async () 
   await assert.rejects(access(new URL("public/favicon.svg", root)));
 });
 
-test("ships the one-shot PDF-to-RPG generation flow", async () => {
-  const [shell, route, gamePackage] = await Promise.all([
+test("ships the resumable, quota-protected PDF-to-RPG job flow", async () => {
+  const [shell, client, legacyRoute, advanceRoute, gamePackage] = await Promise.all([
     readFile(new URL("../app/BookRpgApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/book-job-client.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/generate-game/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/book-jobs/[jobId]/advance/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/game-package.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(shell, /accept="application\/pdf,.pdf"/);
   assert.match(shell, /I own this book or have permission to use it/);
   assert.match(shell, /design-book-rpg-library:v1/);
-  assert.match(route, /OPENAI_API_KEY/);
-  assert.match(route, /input_file/);
-  assert.match(route, /json_schema/);
-  assert.match(route, /store: false/);
+  assert.match(shell, /5 attempts per browser or network in any 24 hours/);
+  assert.match(shell, /processed temporarily by Mistral and OpenAI/);
+  assert.match(client, /create.+upload.+status.+advance.+acknowledge/s);
+  assert.match(client, /RESUMABLE_JOB_KEY/);
+  assert.match(client, /persistValidGameThenAcknowledge/);
+  assert.match(legacyRoute, /job_api_required/);
+  assert.doesNotMatch(legacyRoute, /input_file|OPENAI_API_KEY/);
+  assert.match(advanceRoute, /generateGameStage/);
   assert.match(gamePackage, /minItems: 4/);
   assert.match(gamePackage, /maxItems: 9/);
   assert.match(gamePackage, /sourceAnchors/);
