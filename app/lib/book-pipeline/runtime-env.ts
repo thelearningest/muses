@@ -74,3 +74,8 @@ export type BookPipelineRuntimeEnv = {
   BOOK_IDENTITY_HMAC_KEY?: string;
   BOOK_PROVIDER_URL_HMAC_KEY?: string;
 } & Record<string, unknown>;
+
+export async function getBookPipelineRuntimeEnv(): Promise<BookPipelineRuntimeEnv> {
+  const { env } = await import("cloudflare:workers");
+  return env as BookPipelineRuntimeEnv;
+}
