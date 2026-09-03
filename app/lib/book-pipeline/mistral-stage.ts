@@ -17,6 +17,7 @@ type OcrStageJob = {
   sourceFingerprint: string;
   originalFilename: string;
   expiresAt: number;
+  reservedCostUnits?: number;
 };
 
 type RepositoryPort = Pick<
@@ -92,6 +93,7 @@ export async function advanceOcrStage(input: {
       config.reserveCostUnits &&
       config.maxCostUnits &&
       repository.reserveProviderCost &&
+      (job.reservedCostUnits ?? 0) < config.reserveCostUnits &&
       !(await repository.reserveProviderCost(
         job.id,
         config.reserveCostUnits,
@@ -131,15 +133,19 @@ export async function advanceOcrStage(input: {
       });
       return { outcome: "advanced", status: "ocr_queued" };
     } catch (error) {
+      const indeterminate = error instanceof MistralIndeterminateSubmissionError;
+      if (!indeterminate && config.reserveCostUnits && repository.reconcileProviderCost) {
+        await repository.reconcileProviderCost(job.id, config.reserveCostUnits, 0, now);
+      }
       return markFailure(
         repository,
         job,
-        "ocr_submitting",
-        error instanceof MistralIndeterminateSubmissionError
+        "uploaded",
+        indeterminate
           ? "manual_retry_required"
           : "provider_unavailable",
         now,
-        error instanceof MistralIndeterminateSubmissionError,
+        indeterminate,
       );
     }
   }

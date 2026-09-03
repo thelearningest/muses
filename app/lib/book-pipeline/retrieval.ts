@@ -131,14 +131,17 @@ export async function retrieveQuestEvidenceStage(input: {
   bookMap: BookMap;
   visualAnnotations: StoredVisualAnnotation[];
   provider: EmbeddingProvider;
-  repository: Pick<BookJobRepository, "commitStage" | "markRecoverable" | "appendOpenAiRequestId">;
+  repository: Pick<BookJobRepository, "commitStage" | "markRecoverable" | "appendOpenAiRequestId"> & Partial<Pick<BookJobRepository, "reserveProviderCost" | "reconcileProviderCost">>;
   store: {
     getJson<T>(jobId: string, path: string): Promise<T | null>;
     putJson(jobId: string, path: string, value: unknown, expiresAt: number): Promise<void>;
   };
   model: string;
+  reserveCostUnits?: number;
+  maxCostUnits?: number;
   now: number;
 }) {
+  let reserved = false;
   try {
     const manifest = await input.store.getJson<{ batchCount: number }>(input.job.id, "evidence-manifest.json");
     if (!manifest || !Number.isSafeInteger(manifest.batchCount) || manifest.batchCount < 1) throw new Error("Evidence manifest is missing");
@@ -150,6 +153,10 @@ export async function retrieveQuestEvidenceStage(input: {
     const units = chunkCanonicalBook(input.canonical).units;
     const concepts = input.bookMap.proposedQuestConceptIds.map((id) => input.bookMap.concepts.find((concept) => concept.id === id)).filter((value): value is BookMap["concepts"][number] => Boolean(value));
     const values = [...units.map((unit) => `${unit.contextPrefix}\n${unit.text}`), ...concepts.map((concept) => `${concept.name}\n${concept.summary}`)];
+    if (input.reserveCostUnits && input.maxCostUnits && input.repository.reserveProviderCost) {
+      reserved = await input.repository.reserveProviderCost(input.job.id, input.reserveCostUnits, input.maxCostUnits, input.now);
+      if (!reserved) throw new Error("Provider budget exhausted");
+    }
     const embedded = await input.provider.embed({ model: input.model, values });
     if (embedded.vectors.length !== values.length) throw new Error("Embedding count mismatch");
     if (embedded.requestId) await input.repository.appendOpenAiRequestId(input.job.id, embedded.requestId, input.now);
@@ -172,8 +179,15 @@ export async function retrieveQuestEvidenceStage(input: {
     }, input.job.expiresAt);
     await input.store.putJson(input.job.id, "quest-evidence.json", { contracts }, input.job.expiresAt);
     await input.repository.commitStage({ jobId: input.job.id, expectedStatus: "retrieving_quest_evidence", nextStatus: "generating_game", now: input.now });
+    if (reserved && input.reserveCostUnits && input.repository.reconcileProviderCost) {
+      await input.repository.reconcileProviderCost(input.job.id, input.reserveCostUnits, input.reserveCostUnits, input.now);
+      reserved = false;
+    }
     return { outcome: "complete" as const, contractCount: contracts.length };
   } catch {
+    if (reserved && input.reserveCostUnits && input.repository.reconcileProviderCost) {
+      await input.repository.reconcileProviderCost(input.job.id, input.reserveCostUnits, 0, input.now);
+    }
     await input.repository.markRecoverable(input.job.id, "retrieving_quest_evidence", "failed_recoverable", "grounding_quality_insufficient", input.now);
     return { outcome: "interrupted" as const };
   }

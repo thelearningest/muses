@@ -140,6 +140,8 @@ export async function POST(request: Request, context: Context) {
         repository,
         store,
         model: config.embeddingModel,
+        reserveCostUnits: config.mapCostReserveUnits,
+        maxCostUnits: config.maxProviderCostUnitsPerJob,
         now,
       });
       return Response.json(result, { status: result.outcome === "interrupted" ? 409 : 200, headers: { "cache-control": "no-store" } });
@@ -180,7 +182,13 @@ export async function POST(request: Request, context: Context) {
         provider: new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")),
         repository,
         store,
-        config: { model: config.verificationModel, reasoningEffort: config.verificationReasoningEffort, maxRepairAttempts: config.maxQuestRepairAttempts },
+        config: {
+          model: config.verificationModel,
+          reasoningEffort: config.verificationReasoningEffort,
+          maxRepairAttempts: config.maxQuestRepairAttempts,
+          reserveCostUnits: config.mapCostReserveUnits,
+          maxCostUnits: config.maxProviderCostUnitsPerJob,
+        },
         now,
       });
       return Response.json(result, { status: result.outcome === "interrupted" ? 409 : 200, headers: { "cache-control": "no-store" } });

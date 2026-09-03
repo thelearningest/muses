@@ -103,6 +103,7 @@ export async function mapEvidenceBatch(input: {
   const path = `evidence/${input.job.batchCursor}.json`;
   const existing = await input.store.getJson<{ cards: EvidenceCard[] }>(input.job.id, path);
   if (!existing) {
+    let reserved = false;
     const sections = batches[input.job.batchCursor];
     try {
       if (
@@ -118,6 +119,7 @@ export async function mapEvidenceBatch(input: {
       ) {
         throw new Error("The job provider budget is exhausted");
       }
+      reserved = Boolean(input.config.reserveCostUnits && input.config.maxCostUnits && input.repository.reserveProviderCost);
       const response = await input.provider.generateStructured<{ cards: EvidenceCard[] }>({
         model: input.config.model,
         reasoningEffort: input.config.reasoningEffort,
@@ -145,6 +147,7 @@ export async function mapEvidenceBatch(input: {
           Math.max(1, Math.ceil(response.usage.totalTokens / 1_000)),
           input.now,
         );
+        reserved = false;
       }
       const cards = validateEvidenceCards(response.data.cards, input.canonical);
       const sectionIds = new Set(sections.map((section) => section.id));
@@ -164,6 +167,9 @@ export async function mapEvidenceBatch(input: {
       );
     } catch (error) {
       const manual = error instanceof OpenAiIndeterminateRequestError;
+      if (reserved && !manual && input.config.reserveCostUnits && input.repository.reconcileProviderCost) {
+        await input.repository.reconcileProviderCost(input.job.id, input.config.reserveCostUnits, 0, input.now);
+      }
       await input.repository.markRecoverable(
         input.job.id,
         "mapping_evidence",

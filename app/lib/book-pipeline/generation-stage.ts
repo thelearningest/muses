@@ -67,11 +67,13 @@ export async function generateGameStage(input: {
   config: { model: string; reasoningEffort: ReasoningEffort; reserveCostUnits?: number; maxCostUnits?: number };
   now: number;
 }) {
+  let reserved = false;
   try {
     if (input.config.reserveCostUnits && input.config.maxCostUnits && input.repository.reserveProviderCost &&
       !(await input.repository.reserveProviderCost(input.job.id, input.config.reserveCostUnits, input.config.maxCostUnits, input.now))) {
       throw new Error("Provider budget exhausted");
     }
+    reserved = Boolean(input.config.reserveCostUnits && input.config.maxCostUnits && input.repository.reserveProviderCost);
     const boundedInput = buildGenerationInput(input.bookMap, input.contracts);
     const response = await input.provider.generateStructured<GameContent>({
       model: input.config.model,
@@ -84,6 +86,7 @@ export async function generateGameStage(input: {
     });
     if (input.config.reserveCostUnits && input.repository.reconcileProviderCost) {
       await input.repository.reconcileProviderCost(input.job.id, input.config.reserveCostUnits, Math.max(1, Math.ceil(response.usage.totalTokens / 1_000)), input.now);
+      reserved = false;
     }
     const game = parseGameContent(response.data);
     if (!game) throw new Error("Generated game failed schema validation");
@@ -98,6 +101,9 @@ export async function generateGameStage(input: {
     return { outcome: "complete" as const, questCount: game.quests.length };
   } catch (error) {
     const manual = error instanceof OpenAiIndeterminateRequestError;
+    if (reserved && !manual && input.config.reserveCostUnits && input.repository.reconcileProviderCost) {
+      await input.repository.reconcileProviderCost(input.job.id, input.config.reserveCostUnits, 0, input.now);
+    }
     await input.repository.markRecoverable(input.job.id, "generating_game", manual ? "manual_retry_required" : "failed_recoverable", manual ? "manual_retry_required" : "grounding_quality_insufficient", input.now);
     return { outcome: "interrupted" as const };
   }

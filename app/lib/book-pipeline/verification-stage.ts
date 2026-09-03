@@ -54,9 +54,9 @@ export async function verifyNextQuestStage(input: {
   game: GameContent;
   contracts: QuestEvidenceContract[];
   provider: StructuredOutputProvider;
-  repository: Pick<BookJobRepository, "commitStage" | "markRecoverable" | "markTerminal" | "appendOpenAiRequestId">;
+  repository: Pick<BookJobRepository, "commitStage" | "markRecoverable" | "markTerminal" | "appendOpenAiRequestId"> & Partial<Pick<BookJobRepository, "reserveProviderCost" | "reconcileProviderCost">>;
   store: StorePort;
-  config: { model: string; reasoningEffort: ReasoningEffort; maxRepairAttempts: number };
+  config: { model: string; reasoningEffort: ReasoningEffort; maxRepairAttempts: number; reserveCostUnits?: number; maxCostUnits?: number };
   now: number;
 }) {
   if (input.job.batchCursor >= input.game.quests.length) return finish({ job: input.job, game: input.game, store: input.store, repository: input.repository, now: input.now });
@@ -66,7 +66,12 @@ export async function verifyNextQuestStage(input: {
     await input.repository.markTerminal(input.job.id, "failed_terminal", "verification_failed", input.now, input.job.expiresAt);
     return { outcome: "terminal" as const };
   }
+  let reserved = false;
   try {
+    if (input.config.reserveCostUnits && input.config.maxCostUnits && input.repository.reserveProviderCost) {
+      reserved = await input.repository.reserveProviderCost(input.job.id, input.config.reserveCostUnits, input.config.maxCostUnits, input.now);
+      if (!reserved) throw new Error("Provider budget exhausted");
+    }
     let game = input.game;
     let quest = game.quests[index];
     const requestContext = {
@@ -102,5 +107,9 @@ export async function verifyNextQuestStage(input: {
     const manual = error instanceof OpenAiIndeterminateRequestError;
     await input.repository.markRecoverable(input.job.id, "verifying_quests", manual ? "manual_retry_required" : "failed_recoverable", manual ? "manual_retry_required" : "provider_unavailable", input.now);
     return { outcome: "interrupted" as const };
+  } finally {
+    if (reserved && input.config.reserveCostUnits && input.repository.reconcileProviderCost) {
+      await input.repository.reconcileProviderCost(input.job.id, input.config.reserveCostUnits, input.config.reserveCostUnits, input.now);
+    }
   }
 }
