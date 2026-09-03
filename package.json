@@ -13,6 +13,7 @@
     "build:vercel": "NEXT_HOST_TARGET=vercel next build",
     "start:vercel": "NEXT_HOST_TARGET=vercel next start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test:unit": "vitest run --config vitest.config.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
@@ -40,6 +41,7 @@
     "typescript": "5.9.3",
     "vinext": "0.0.50",
     "vite": "8.0.13",
+    "vitest": "5.0.0",
     "wrangler": "4.92.0"
   },
   "type": "module"
