@@ -1,0 +1,1 @@
+ALTER TABLE `book_jobs` ADD `resume_stage` text;

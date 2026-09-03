@@ -8,6 +8,7 @@ import type { BookJobRecord, BookJobRepository } from "./job-repository";
 import { BookJobRepository as D1BookJobRepository } from "./job-repository";
 import type { SafeBookJobErrorCategory } from "./contracts";
 import { publicStageFor } from "./state-machine";
+import { MistralOcrProvider } from "./providers/mistral";
 import {
   assertSameOrigin,
   createCapabilityToken,
@@ -50,6 +51,7 @@ export type BookJobApiDependencies = {
   now(): number;
   newId(): string;
   newCapability(): string;
+  cleanupProviderArtifacts?(job: BookJobRecord): Promise<void>;
 };
 
 class HttpProblem extends Error {
@@ -205,6 +207,7 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
   const sweepExpired = async () => {
     const expired = await dependencies.repository.listExpiredJobs(dependencies.now(), 2);
     for (const job of expired) {
+      await dependencies.cleanupProviderArtifacts?.(job);
       await dependencies.store.deleteJobArtifacts(job.id);
       await dependencies.repository.markCleanupState(job.id, "complete", dependencies.now());
     }
@@ -389,6 +392,7 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
           dependencies.now(),
           job.expiresAt,
         );
+        await dependencies.cleanupProviderArtifacts?.(job);
         await dependencies.store.deleteJobArtifacts(jobId);
         await dependencies.repository.markCleanupState(jobId, "complete", dependencies.now());
         return new Response(null, { status: 204 });
@@ -457,6 +461,7 @@ export async function createRuntimeBookJobApi() {
     Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
   const turnstileSecret = requireSecret(env.TURNSTILE_SECRET_KEY, "TURNSTILE_SECRET_KEY");
+  const mistralApiKey = typeof env.MISTRAL_API_KEY === "string" ? env.MISTRAL_API_KEY : null;
   return createBookJobApi({
     config: parseBookPipelineConfig(stringEnv) ?? DEFAULT_BOOK_PIPELINE_CONFIG,
     repository: new D1BookJobRepository(env.DB),
@@ -469,5 +474,15 @@ export async function createRuntimeBookJobApi() {
     now: () => Math.floor(Date.now() / 1_000),
     newId: () => crypto.randomUUID(),
     newCapability: createCapabilityToken,
+    cleanupProviderArtifacts: async (job) => {
+      if (!mistralApiKey || !job.mistralBatchId) return;
+      const provider = new MistralOcrProvider(mistralApiKey);
+      await Promise.allSettled([
+        provider.cancel(job.mistralBatchId),
+        provider.deleteBatch(job.mistralBatchId),
+        ...(job.mistralInputFileId ? [provider.deleteFile(job.mistralInputFileId)] : []),
+        ...(job.mistralOutputFileId ? [provider.deleteFile(job.mistralOutputFileId)] : []),
+      ]);
+    },
   });
 }

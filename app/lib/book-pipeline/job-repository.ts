@@ -13,6 +13,7 @@ type BookJobRow = {
   page_count: number | null;
   status: BookJobStatus;
   current_stage: BookJobStatus;
+  resume_stage: BookJobStatus | null;
   batch_cursor: number;
   retry_count: number;
   cancellation_requested: number;
@@ -42,6 +43,7 @@ export type BookJobRecord = {
   pageCount: number | null;
   status: BookJobStatus;
   currentStage: BookJobStatus;
+  resumeStage: BookJobStatus | null;
   batchCursor: number;
   retryCount: number;
   cancellationRequested: boolean;
@@ -87,6 +89,7 @@ function mapJob(row: BookJobRow): BookJobRecord {
     pageCount: row.page_count,
     status: row.status,
     currentStage: row.current_stage,
+    resumeStage: row.resume_stage,
     batchCursor: row.batch_cursor,
     retryCount: row.retry_count,
     cancellationRequested: row.cancellation_requested === 1,
@@ -107,7 +110,7 @@ function mapJob(row: BookJobRow): BookJobRecord {
 
 const JOB_COLUMNS = `
   id, capability_hash, identity_hash, network_hash, source_fingerprint,
-  original_filename, mime_type, byte_size, page_count, status, current_stage,
+  original_filename, mime_type, byte_size, page_count, status, current_stage, resume_stage,
   batch_cursor, retry_count, cancellation_requested, cleanup_state,
   terminal_error_category, mistral_batch_id, mistral_input_file_id,
   mistral_output_file_id, openai_request_ids, reserved_cost_units,
@@ -400,6 +403,38 @@ export class BookJobRepository {
         now,
         jobId,
       )
+      .run();
+    return result.success && changes(result) === 1;
+  }
+
+  async markRecoverable(
+    jobId: string,
+    resumeStage: BookJobStatus,
+    status: "failed_recoverable" | "manual_retry_required",
+    errorCategory: SafeBookJobErrorCategory,
+    now: number,
+  ): Promise<boolean> {
+    const result = await this.db
+      .prepare(`
+        UPDATE book_jobs SET status = ?, resume_stage = ?, current_stage = ?,
+          terminal_error_category = ?, retry_count = retry_count + 1, updated_at = ?
+        WHERE id = ? AND status != 'cleaned'
+      `)
+      .bind(status, resumeStage, resumeStage, errorCategory, now, jobId)
+      .run();
+    return result.success && changes(result) === 1;
+  }
+
+  async resumeRecoverable(jobId: string, capabilityHash: string, now: number): Promise<boolean> {
+    const result = await this.db
+      .prepare(`
+        UPDATE book_jobs SET status = resume_stage, current_stage = resume_stage,
+          resume_stage = NULL, terminal_error_category = NULL, updated_at = ?
+        WHERE id = ? AND capability_hash = ?
+          AND status IN ('failed_recoverable', 'manual_retry_required')
+          AND resume_stage IS NOT NULL AND cancellation_requested = 0 AND expires_at > ?
+      `)
+      .bind(now, jobId, capabilityHash, now)
       .run();
     return result.success && changes(result) === 1;
   }

@@ -14,6 +14,7 @@ export const bookJobs = sqliteTable(
     pageCount: integer("page_count"),
     status: text("status").notNull(),
     currentStage: text("current_stage").notNull(),
+    resumeStage: text("resume_stage"),
     batchCursor: integer("batch_cursor").notNull().default(0),
     retryCount: integer("retry_count").notNull().default(0),
     cancellationRequested: integer("cancellation_requested", { mode: "boolean" })

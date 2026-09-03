@@ -1,0 +1,66 @@
+{
+  "model": "mistral-ocr-4-1",
+  "usage_info": { "pages_processed": 2 },
+  "pages": [
+    {
+      "index": 0,
+      "markdown": "# Field Notes\n\nObservation comes before explanation.",
+      "header": "FIELD NOTES",
+      "footer": "1",
+      "dimensions": { "width": 1275, "height": 1650, "dpi": 150 },
+      "confidence": 0.96,
+      "blocks": [
+        {
+          "type": "title",
+          "text": "Field Notes",
+          "bbox": { "x0": 100, "y0": 90, "x1": 600, "y1": 155 },
+          "confidence": 0.99
+        },
+        {
+          "type": "text",
+          "text": "Observation comes before explanation.",
+          "bbox": { "x0": 100, "y0": 210, "x1": 1030, "y1": 260 },
+          "confidence": 0.94
+        },
+        {
+          "type": "caption",
+          "text": "Figure 1. A feedback loop.",
+          "bbox": { "x0": 100, "y0": 1050, "x1": 720, "y1": 1100 },
+          "confidence": 0.88
+        }
+      ],
+      "images": [
+        {
+          "id": "img-0.jpeg",
+          "top_left_x": 110,
+          "top_left_y": 800,
+          "bottom_right_x": 1120,
+          "bottom_right_y": 1030
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "markdown": "",
+      "header": "FIELD NOTES",
+      "footer": "2",
+      "dimensions": { "width": 1275, "height": 1650, "dpi": 150 },
+      "confidence": 0.31,
+      "blocks": [
+        {
+          "type": "text",
+          "text": "A low confidence line",
+          "bbox": [100, 200, 850, 250],
+          "confidence": 0.31
+        },
+        {
+          "type": "text",
+          "text": "   ",
+          "bbox": [100, 300, 850, 350],
+          "confidence": 0.2
+        }
+      ],
+      "images": []
+    }
+  ]
+}

@@ -72,6 +72,7 @@ function installSchema(db: DatabaseSync) {
       page_count INTEGER,
       status TEXT NOT NULL,
       current_stage TEXT NOT NULL,
+      resume_stage TEXT,
       batch_cursor INTEGER NOT NULL DEFAULT 0,
       retry_count INTEGER NOT NULL DEFAULT 0,
       cancellation_requested INTEGER NOT NULL DEFAULT 0,

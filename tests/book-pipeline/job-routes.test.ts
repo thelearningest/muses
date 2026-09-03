@@ -27,6 +27,7 @@ function makeDependencies(overrides: Partial<BookJobApiDependencies> = {}) {
     pageCount: null,
     status: "created" as const,
     currentStage: "created" as const,
+    resumeStage: null,
     batchCursor: 0,
     retryCount: 0,
     cancellationRequested: false,
