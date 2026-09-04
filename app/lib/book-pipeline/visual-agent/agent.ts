@@ -136,8 +136,13 @@ export async function advanceVisualAgent(input: { state: VisualState; book: Cano
   } else {
     const result = selectionSchema.parse(response.data);
     const eligible = rankedCandidates(state.candidates);
-    if (new Set(result.selectedIds).size !== result.selectedIds.length || result.selectedIds.length > 6 || result.selectedIds.some((id) => !eligible.some((v) => v.id === id))) throw new Error("Selector returned an ineligible candidate");
-    state.selectedIds = rankedCandidates(eligible.filter((v) => result.selectedIds.includes(v.id)), result.selectedIds).slice(0, 6).map((v) => v.id);
+    // Both candidate IDs and the actual labeled preview IDs identify supplied
+    // evidence. Resolve only exact current-revision IDs; a pair is one candidate.
+    const selected = result.selectedIds.map((id) => eligible.find((candidate) => candidate.id === id || candidate.boxes.some((_, index) => id === `${candidate.id}-r${candidate.revision}-${index}-preview`))?.id);
+    if (selected.some((id) => !id)) throw new Error("Selector returned an ineligible candidate");
+    const selectedIds = [...new Set(selected as string[])];
+    if (selectedIds.length > 6) throw new Error("Selector returned too many candidates");
+    state.selectedIds = rankedCandidates(eligible.filter((v) => selectedIds.includes(v.id)), selectedIds).slice(0, 6).map((v) => v.id);
     state.phase = "done"; state.stopReason = "sampled_selection_complete";
   }
   state.step++;

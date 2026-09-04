@@ -35,6 +35,12 @@ describe("bounded visual agent", () => {
     const state = stateAt("select");
     expect(renderRequests(state).map((r) => r.kind)).toEqual(["preview"]);
   });
+  it("resolves exact current preview IDs to their verified parent candidate", async () => {
+    const state = stateAt("select"); state.candidates[0].boxes = [box, box];
+    const result = await step(state, { selectedIds: ["v0-r0-0-preview", "v0-r0-1-preview"], reason: "A strong pair" });
+    expect(result.state.selectedIds).toEqual(["v0"]);
+    await expect(step(state, { selectedIds: ["v0-r9-0-preview"], reason: "Stale" })).rejects.toThrow(/ineligible/);
+  });
   it("includes scanned pages with no preexisting figure references", () => { expect(inspectionPool(book, []).sort()).toEqual([0,1]); });
   it.each([{ ...box, x: -1 }, { ...box, x: 0.9 }, { ...box, width: 0 }, { ...box, y: NaN }, { ...box, height: Infinity }])("rejects invalid/out-of-page boxes", (b) => expect(validBox(b)).toBe(false));
   it("waits for images without making a paid call", async () => {

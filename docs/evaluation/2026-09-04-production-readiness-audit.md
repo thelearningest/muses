@@ -42,6 +42,8 @@ The latest implementation overlaps browser preparation with ready-group extracti
 
 The resumed run exposed an invalid visual-verifier citation (`pageIndex-20` instead of a supplied block ID). Invalid optional candidates are now rejected, never promoted to trusted evidence, while the rest of the job can continue. New batch jobs inspect at most three visual candidates rather than traversing the entire scout queue. Existing non-batch jobs keep the prior twelve-candidate ceiling. The focused visual tests (23) and rebuilt production Worker pass; the current job resumes without repeating its saved provider responses.
 
+The selector also returned exact supplied preview IDs rather than parent candidate IDs. These now resolve only through the current eligible candidate's exact revision/part IDs; paired previews collapse to one candidate, and stale/unknown IDs remain rejected. The focused visual-agent checks (22) and rebuilt production Worker pass.
+
 | Requirement | Evidence inspected | Finding / next work |
 | --- | --- | --- |
 | Fresh PDF with only OpenAI credentials | New jobs pin Luna ingestion; real browser upload reached page extraction without a Mistral key | Wired and partially live-tested. Full-book quality acceptance failed at PDF page 6; legacy jobs retain Mistral. |
