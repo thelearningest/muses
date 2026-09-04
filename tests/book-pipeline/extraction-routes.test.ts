@@ -108,4 +108,9 @@ describe("authenticated extraction handoff", () => {
     }
     expect(() => lunaLimits({ BOOK_EXTRACTION_MAX_USD: "NaN" }, "BOOK_EXTRACTION")).toThrow();
   });
+  it("pins Standard and Fast Sol prices separately from Luna visuals", () => {
+    expect(lunaLimits({}, "BOOK_EXTRACTION")).toEqual({ maxMicros: 25_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 });
+    expect(lunaLimits({ OPENAI_SERVICE_TIER: "fast" }, "BOOK_EXTRACTION")).toEqual({ maxMicros: 50_000_000, inputUsdPerMillion: 8, outputUsdPerMillion: 40 });
+    expect(lunaLimits({ OPENAI_SERVICE_TIER: "fast" }, "BOOK_VISUAL")).toEqual({ maxMicros: 500_000, inputUsdPerMillion: 0.2, outputUsdPerMillion: 1.2 });
+  });
 });

@@ -178,7 +178,11 @@ export async function advanceBatchExtraction(input: {
     // The complete rendered page is still attached for visual extraction.
     const text = JSON.stringify({ pages: assets.map((asset) => ({ pageIndex: asset!.pageIndex, nativeText: compactNativeText(asset!.nativeText) })) });
     const tokens = new TextEncoder().encode(text + BATCH_INSTRUCTIONS + JSON.stringify(JSON_SCHEMA)).length + 1000 + images.reduce((sum, image) => sum + extractionImageTokenBound(state.model, image.width, image.height), 0);
-    const reserveFor = (outputTokens: number) => Math.ceil(tokens * SOL_EXTRACTION_PRICE.inputUsdPerMillion * 1.25 + outputTokens * SOL_EXTRACTION_PRICE.outputUsdPerMillion);
+    // Older v4 manifests accidentally carried Luna prices. Preserve their
+    // conservative Standard-Sol floor; new manifests pin Standard or Fast Sol.
+    const inputPrice = Math.max(SOL_EXTRACTION_PRICE.inputUsdPerMillion, state.limits.inputUsdPerMillion);
+    const outputPrice = Math.max(SOL_EXTRACTION_PRICE.outputUsdPerMillion, state.limits.outputUsdPerMillion);
+    const reserveFor = (outputTokens: number) => Math.ceil(tokens * inputPrice * 1.25 + outputTokens * outputPrice);
     const reserved = reserveFor(INITIAL_OUTPUT_TOKENS);
     // Disjoint batch ceilings make the total dollar cap safe under concurrency.
     if (reserved > Math.floor(state.limits.maxMicros / groups.length)) throw new Error("Batch extraction budget is insufficient");
@@ -222,9 +226,11 @@ export async function advanceBatchExtraction(input: {
     "evidence-manifest.json": { batchCount: 1 }, "book-map.json": artifacts.bookMap,
     "extraction-visuals.json": { candidates: artifacts.visualCandidates } })) await store.putJson(job.id, path, value, job.expiresAt);
   const latest = await store.getJsonVersion<BatchExtractionState>(job.id, BATCH_STATE_PATH);
+  const inputPrice = Math.max(SOL_EXTRACTION_PRICE.inputUsdPerMillion, state.limits.inputUsdPerMillion);
+  const outputPrice = Math.max(SOL_EXTRACTION_PRICE.outputUsdPerMillion, state.limits.outputUsdPerMillion);
   const usage = allResponses.reduce((sum, response) => ({ calls: sum.calls + 1, inputTokens: sum.inputTokens + response.usage.inputTokens,
     outputTokens: sum.outputTokens + response.usage.outputTokens,
-    estimatedMicros: sum.estimatedMicros + Math.ceil(response.usage.inputTokens * 5 + response.usage.outputTokens * 20) }),
+    estimatedMicros: sum.estimatedMicros + Math.ceil(response.usage.inputTokens * inputPrice * 1.25 + response.usage.outputTokens * outputPrice) }),
   { calls: 0, inputTokens: 0, outputTokens: 0, estimatedMicros: 0 });
   if (latest) await store.putJsonVersion(job.id, BATCH_STATE_PATH, { ...latest.value, cursor: state.pageCount, usage }, latest.etag, job.expiresAt);
   return { outcome: "complete" as const, completedPages: state.pageCount, totalPages: state.pageCount };

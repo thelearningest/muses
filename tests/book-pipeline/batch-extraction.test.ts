@@ -92,7 +92,7 @@ it.each([false, true])("extracts ready groups and publishes all evidence atomica
 it("returns after each worker-safe wave and resumes from durable completed batches", async () => {
   const store = new BookArtifactStore(new ConditionalR2());
   const pageCount = (EXTRACTION_WAVE_SIZE + 1) * 8;
-  const state = initialBatchState("f", pageCount, { maxMicros: 25_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 });
+  const state = initialBatchState("f", pageCount, { maxMicros: 50_000_000, inputUsdPerMillion: 8, outputUsdPerMillion: 40 });
   await store.putJson("job", "extraction/state.json", state, 5000);
   for (let index = 0; index < pageCount; index++) {
     await store.putJson("job", `extraction/assets/${index}-0.json`, {
@@ -125,7 +125,7 @@ it("returns after each worker-safe wave and resumes from durable completed batch
 it("completes a dense 300-page text-layer book within the bounded extraction admission", async () => {
   const store = new BookArtifactStore(new ConditionalR2());
   const pageCount = 300;
-  const state = initialBatchState("f", pageCount, { maxMicros: 25_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 });
+  const state = initialBatchState("f", pageCount, { maxMicros: 50_000_000, inputUsdPerMillion: 8, outputUsdPerMillion: 40 });
   await store.putJson("job", "extraction/state.json", state, 5000);
   for (let index = 0; index < pageCount; index++) {
     await store.putJson("job", `extraction/assets/${index}-0.json`, {

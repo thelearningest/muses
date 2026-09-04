@@ -10,7 +10,8 @@ import { initialBatchState, type BatchExtractionState } from "./batch";
 const manifestSchema = z.object({ sourceFingerprint: z.string().max(200), pageCount: z.number().int().min(1).max(300) }).strict();
 const uploadSchema = z.object({ sourceFingerprint: z.string().max(200), pageIndex: z.number().int().min(0).max(299), revision: z.number().int().min(0).max(2), nativeText: z.string().max(30000), orderReliable: z.boolean(), images: z.array(assetUploadSchema).max(4) }).strict();
 
-// Standard short-context Luna prices; explicit invalid overrides fail closed.
+// Pin the actual provider/tier price basis into each new manifest. Fast Sol is
+// currently twice Standard; Luna remains the visual-agent default.
 // https://developers.openai.com/api/docs/pricing (checked 2026-09-04)
 export function lunaLimits(env: Record<string, unknown>, prefix: "BOOK_EXTRACTION" | "BOOK_VISUAL"): ExtractionLimits {
   const positive = (key: string, fallback: number) => {
@@ -18,7 +19,13 @@ export function lunaLimits(env: Record<string, unknown>, prefix: "BOOK_EXTRACTIO
     if (!Number.isFinite(n) || n <= 0) throw new Error("Invalid provider budget configuration");
     return n;
   };
-  return { maxMicros: Math.ceil(positive(`${prefix}_MAX_USD`, prefix === "BOOK_EXTRACTION" ? 25 : 0.5) * 1_000_000), inputUsdPerMillion: positive(`${prefix}_INPUT_USD_PER_MILLION`, 0.2), outputUsdPerMillion: positive(`${prefix}_OUTPUT_USD_PER_MILLION`, 1.2) };
+  const extraction = prefix === "BOOK_EXTRACTION";
+  const fast = extraction && env.OPENAI_SERVICE_TIER === "fast";
+  return {
+    maxMicros: Math.ceil(positive(`${prefix}_MAX_USD`, extraction ? (fast ? 50 : 25) : 0.5) * 1_000_000),
+    inputUsdPerMillion: positive(`${prefix}_INPUT_USD_PER_MILLION`, extraction ? (fast ? 8 : 4) : 0.2),
+    outputUsdPerMillion: positive(`${prefix}_OUTPUT_USD_PER_MILLION`, extraction ? (fast ? 40 : 20) : 1.2),
+  };
 }
 
 class Rejected extends Error { constructor(readonly code: string, readonly status: number) { super(code); } }
