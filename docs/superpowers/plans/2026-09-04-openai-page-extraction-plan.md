@@ -29,8 +29,8 @@ The optional `writing-plans` and subagent-driven workflow skills are not install
 - [x] Core extraction schema, native-text eligibility, canonical conversion and coverage validation.
 - [x] Durable page-at-a-time orchestration with exact request replay, exclusive attempts, bounded quality refinement, explicit uncertain-call retry, immutable winning-page references and usage ledger.
 - [x] Synthetic core tests, including a late response arriving after a confirmed retry.
-- [ ] Authenticated website routes and PDF.js preparation adapter.
+- [x] Authenticated website routes and PDF.js preparation adapter, provider pinning, progress, cancellation checks and exact asset replay.
 - [ ] Production-equivalent fresh upload and full-book live acceptance.
 - [ ] Final complete-pipeline evaluation and production rollout approval.
 
-The core is not yet called by the website. Do not claim Mistral has been removed from the working upload route.
+New Luna-pinned jobs now call the extraction core without Mistral credentials. A fresh 109-page browser upload reached real local R2 and Luna, but failed closed on PDF page 6 after two refinements. Five pages were committed; no full canonical book or game was produced. See `../../evaluation/2026-09-04-full-book-website-test.md`. This is partial integration evidence, not full-book acceptance.

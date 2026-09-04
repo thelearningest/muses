@@ -15,6 +15,7 @@ export type BookPipelineConfig = {
   ocrCostReserveUnits: number;
   mapCostReserveUnits: number;
   ocrModel: string;
+  ocrProvider: "luna" | "mistral";
   mapModel: string;
   mapReasoningEffort: ReasoningEffort;
   generationModel: string;
@@ -39,6 +40,7 @@ export const DEFAULT_BOOK_PIPELINE_CONFIG = Object.freeze({
   ocrCostReserveUnits: 4_000,
   mapCostReserveUnits: 1_000,
   ocrModel: "mistral-ocr-4-1",
+  ocrProvider: "luna",
   mapModel: "gpt-5.4-mini",
   mapReasoningEffort: "low",
   generationModel: "gpt-5.6-sol",
@@ -172,6 +174,7 @@ export function parseBookPipelineConfig(
       LIMITS.mapCostReserveUnits,
     ),
     ocrModel: modelName(env.MISTRAL_OCR_MODEL, DEFAULT_BOOK_PIPELINE_CONFIG.ocrModel),
+    ocrProvider: env.BOOK_OCR_PROVIDER === "mistral" ? "mistral" : "luna",
     mapModel: modelName(env.OPENAI_MAP_MODEL, DEFAULT_BOOK_PIPELINE_CONFIG.mapModel),
     mapReasoningEffort: reasoningEffort(
       env.OPENAI_MAP_REASONING_EFFORT,

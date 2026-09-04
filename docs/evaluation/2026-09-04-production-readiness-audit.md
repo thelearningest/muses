@@ -2,7 +2,7 @@
 
 Status: incomplete; active goal unchanged. The prior goal turn made progress through implemented fixes and a passing cached-source integration, not full production acceptance.
 
-Update: the user approved the written OpenAI ingestion proposal on 2026-09-04. The provider-neutral page extraction core and synthetic replay/refinement tests are implemented; route/client wiring and full-book live acceptance remain pending. The earlier approval blocker is resolved.
+Update: the approved extraction core, authenticated routes and browser preparation are implemented. A fresh full-PDF upload reached real local D1/R2 and Luna without Mistral, but failed closed at PDF page 6 after committing five pages. A targeted Sol diagnostic improved text fidelity; a selective fallback is proposed, not enabled. See `2026-09-04-full-book-website-test.md`. Full-book acceptance remains pending.
 
 The source-fidelity audit also reproduced and fixed four evidence-validation gaps: wrong block/page association, fabricated excerpts, invalid numeric/empty anchors, and cross-section citation borrowing. Model input now includes each block's own page index. The older mocked integration fixture was corrected to use its actual canonical excerpt and section rather than an invented quotation.
 
@@ -14,7 +14,7 @@ An efficient, effective agentic pipeline that accepts a book PDF in the website 
 
 | Requirement | Evidence inspected | Finding / next work |
 | --- | --- | --- |
-| Fresh PDF with only OpenAI credentials | `app/api/book-jobs/[jobId]/advance/route.ts` constructs Mistral OCR; `config.ts` defaults OCR to Mistral | Missing. The Luna visual mode does not replace ingestion. Implement the proposed page extraction path. |
+| Fresh PDF with only OpenAI credentials | New jobs pin Luna ingestion; real browser upload reached page extraction without a Mistral key | Wired and partially live-tested. Full-book quality acceptance failed at PDF page 6; legacy jobs retain Mistral. |
 | Efficient extraction of this source | Read-only PDF.js text-layer scan of every page on 2026-09-04: 109 pages, 0 pages with text, 0 extracted characters | All pages need visual OCR. Do not claim that native-text extraction solves this particular PDF. |
 | Reusable browser page rendering | `app/visual-page-renderer.ts` already uses PDF.js, file fingerprints, page cleanup, bounded PNGs | Reuse this; avoid another rendering service. OCR needs its own page quality/coverage handling rather than blindly reusing thumbnail limits. |
 | Full source coverage and automated evidence selection | Live runner builds four contracts from six cached transcriptions | Unverified for the full book. Need a fresh 109-page run through canonicalization, evidence mapping, book map and retrieval without manually authored contracts. |

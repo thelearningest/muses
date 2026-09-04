@@ -1,5 +1,7 @@
 import { fingerprintFile } from "./book-job-client";
 import type { RenderRequest } from "./lib/book-pipeline/visual-agent/schema";
+import type { ExtractionPageRequest } from "./lib/book-pipeline/extraction/stage";
+import { extractionRenderRequests, nativeTextUsable } from "./lib/book-pipeline/extraction/policy";
 
 export async function createVisualPageRenderer(file: File) {
   const fingerprint = await fingerprintFile(file);
@@ -8,9 +10,44 @@ export async function createVisualPageRenderer(file: File) {
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
   const loading = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
   const pdf = await loading.promise;
-  return {
+  const renderer = {
     fingerprint,
+    pageCount: pdf.numPages,
     destroy: () => loading.destroy(),
+    async prepareExtraction(request: ExtractionPageRequest, sourceFingerprint: string) {
+      if (fingerprint !== sourceFingerprint) throw new Error("Select the same PDF used for this job.");
+      const requests = extractionRenderRequests(request.pageIndex, request.revision);
+      if (request.parts !== requests.length || request.allowNative !== (request.revision === 0) || request.pageIndex >= pdf.numPages) throw new Error("Invalid page preparation request");
+      let nativeText = "", orderReliable = false;
+      if (request.allowNative) {
+        const page = await pdf.getPage(request.pageIndex + 1);
+        try {
+          const content = await page.getTextContent();
+          const items = content.items.filter((item) => "str" in item);
+          // Only simple, unrotated single-column reading order qualifies.
+          // Ambiguous layouts fall back to vision without guessing or dropping text.
+          orderReliable = page.rotate === 0 && items.length > 0;
+          let previousY = Infinity, previousX = -Infinity;
+          const lineStarts: number[] = [];
+          for (const item of items) {
+            const [a, b, c, d, x, y] = item.transform;
+            const newLine = Math.abs(y - previousY) > Math.max(2, Math.abs(d) * 0.4);
+            if (item.dir !== "ltr" || a <= 0 || d <= 0 || Math.abs(b) > 0.01 || Math.abs(c) > 0.01 || y > previousY + 2 || (!newLine && x < previousX - 2)) orderReliable = false;
+            if (newLine) { lineStarts.push(x); if (nativeText && !nativeText.endsWith("\n")) nativeText += "\n"; }
+            nativeText += item.str + (item.hasEOL ? "\n" : " ");
+            previousY = y; previousX = x;
+          }
+          if (lineStarts.length < 3 || Math.max(...lineStarts) - Math.min(...lineStarts) > page.view[2] * 0.12) orderReliable = false;
+          // Never pass truncated text off as a complete native extraction.
+          if (nativeText.length > 30000) { nativeText = ""; orderReliable = false; }
+        } finally { page.cleanup(); }
+      }
+      const images = [];
+      if (!nativeTextUsable(nativeText, orderReliable)) {
+        for (const part of requests) images.push(await renderer.render(part, sourceFingerprint));
+      }
+      return { sourceFingerprint, pageIndex: request.pageIndex, revision: request.revision, nativeText, orderReliable, images };
+    },
     async render(request: RenderRequest, sourceFingerprint: string) {
       if (fingerprint !== sourceFingerprint) throw new Error("Select the same PDF used for this job.");
       const page = await pdf.getPage(request.pageIndex + 1);
@@ -42,4 +79,5 @@ export async function createVisualPageRenderer(file: File) {
       } finally { canvas.width = canvas.height = output.width = output.height = 0; page.cleanup(); }
     },
   };
+  return renderer;
 }

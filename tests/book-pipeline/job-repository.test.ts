@@ -153,6 +153,16 @@ describe("BookJobRepository", () => {
     expect(claims.sort()).toEqual([false, true]);
   });
 
+  it("does not let a late extraction failure resurrect cancelled or expired jobs", async () => {
+    await repository.createJob(baseJob);
+    await repository.claimStage({ jobId: baseJob.id, capabilityHash: baseJob.capabilityHash, expectedStatus: "created", claimedStatus: "extracting_pages", now: 1001 });
+    expect(await repository.interruptExtraction(baseJob.id, "manual_retry_required", 1002)).toBe(true);
+    expect(await repository.resumeRecoverable(baseJob.id, baseJob.capabilityHash, 1003)).toBe(true);
+    expect(await repository.interruptExtraction(baseJob.id, "manual_retry_required", baseJob.expiresAt)).toBe(false);
+    await repository.requestCancellation(baseJob.id, baseJob.capabilityHash, 1004);
+    expect(await repository.interruptExtraction(baseJob.id, "extraction_quality_insufficient", 1005)).toBe(false);
+  });
+
   it("reserves provider cost only within the per-job ceiling", async () => {
     await repository.createJob(baseJob);
 

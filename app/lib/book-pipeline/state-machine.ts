@@ -20,7 +20,8 @@ const INTERRUPTIONS = [
 export const BOOK_JOB_TRANSITIONS = {
   created: ["uploading", ...INTERRUPTIONS],
   uploading: ["uploaded", ...INTERRUPTIONS],
-  uploaded: ["ocr_submitting", ...INTERRUPTIONS],
+  uploaded: ["ocr_submitting", "extracting_pages", ...INTERRUPTIONS],
+  extracting_pages: ["mapping_evidence", ...INTERRUPTIONS],
   ocr_submitting: ["ocr_queued", ...INTERRUPTIONS],
   ocr_queued: ["ocr_collecting", ...INTERRUPTIONS],
   ocr_collecting: ["canonicalizing", ...INTERRUPTIONS],
@@ -107,6 +108,7 @@ export const PUBLIC_STAGE_BY_STATUS = {
   created: "preparing",
   uploading: "uploading",
   uploaded: "preparing",
+  extracting_pages: "reading_source",
   ocr_submitting: "waiting_for_ocr",
   ocr_queued: "waiting_for_ocr",
   ocr_collecting: "reading_source",

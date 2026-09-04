@@ -1,8 +1,9 @@
 import { isGamePackage, type GamePackage } from "./game-package";
 import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
 import type { RenderRequest } from "./lib/book-pipeline/visual-agent/schema";
+import type { ExtractionPageRequest } from "./lib/book-pipeline/extraction/stage";
 
-export type BookJobAdvanceResult = { outcome: string; completedBatches?: number; totalBatches?: number; verifiedQuests?: number; totalQuests?: number; renderRequests?: RenderRequest[]; sourceFingerprint?: string };
+export type BookJobAdvanceResult = { outcome: string; completedBatches?: number; totalBatches?: number; verifiedQuests?: number; totalQuests?: number; renderRequests?: RenderRequest[]; sourceFingerprint?: string; request?: ExtractionPageRequest; maxPages?: number };
 
 export const RESUMABLE_JOB_KEY = "playable-books-active-job:v1";
 export const BROWSER_IDENTITY_KEY = "playable-books-browser-identity:v1";
@@ -65,7 +66,8 @@ export function saveResumableJob(storage: Pick<Storage, "setItem">, job: Resumab
 }
 
 export class BookJobClient {
-  constructor(private readonly fetcher: typeof fetch = fetch, private readonly origin = "") {}
+  // Browser fetch must not receive the client instance as its `this` receiver.
+  constructor(private readonly fetcher: typeof fetch = (...args) => fetch(...args), private readonly origin = "") {}
 
   private headers(job: ResumableBookJob, mutation = false): HeadersInit {
     return { authorization: `Bearer ${job.capabilityToken}`, ...(mutation ? { "content-type": "application/json" } : {}) };
@@ -95,6 +97,14 @@ export class BookJobClient {
 
   async uploadVisualAsset(job: ResumableBookJob, asset: unknown): Promise<void> {
     await parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/visual-assets`, { method: "PUT", headers: this.headers(job, true), body: JSON.stringify(asset) }));
+  }
+
+  async initializeExtraction(job: ResumableBookJob, manifest: { sourceFingerprint: string; pageCount: number }): Promise<void> {
+    await parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, { method: "POST", headers: this.headers(job, true), body: JSON.stringify(manifest) }));
+  }
+
+  async uploadExtractionAsset(job: ResumableBookJob, asset: unknown): Promise<void> {
+    await parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, { method: "PUT", headers: this.headers(job, true), body: JSON.stringify(asset) }));
   }
 
   async acknowledge(job: ResumableBookJob): Promise<void> {
@@ -142,15 +152,20 @@ export async function driveBookJob(input: {
   sleep?(milliseconds: number, signal: AbortSignal): Promise<void>;
   now?(): number;
   renderAssets?(requests: RenderRequest[], sourceFingerprint: string): Promise<void>;
+  prepareExtractionManifest?(sourceFingerprint: string, maxPages: number): Promise<void>;
+  prepareExtractionPage?(request: ExtractionPageRequest, sourceFingerprint: string): Promise<void>;
 }): Promise<"complete" | "paused" | "cleared" | "aborted"> {
   const now = input.now ?? Date.now;
   const sleep = input.sleep ?? ((milliseconds, signal) => new Promise<void>((resolve) => {
-    const timer = window.setTimeout(resolve, milliseconds);
-    signal.addEventListener("abort", () => { window.clearTimeout(timer); resolve(); }, { once: true });
+    const finish = () => { window.clearTimeout(timer); signal.removeEventListener("abort", finish); resolve(); };
+    const timer = window.setTimeout(finish, milliseconds);
+    signal.addEventListener("abort", finish, { once: true });
+    if (signal.aborted) finish();
   }));
   let lastAdvanceAt = 0;
   while (!input.signal.aborted) {
     const status = await input.client.status(input.job);
+    if (input.signal.aborted) return "aborted";
     input.onStatus(status);
     const action = nextJobAction(status, now(), lastAdvanceAt);
     if (action === "complete") {
@@ -158,9 +173,34 @@ export async function driveBookJob(input: {
       return "complete";
     }
     if (action === "pause") return "paused";
-    if (action === "clear") { input.clear(); return "cleared"; }
+    if (action === "clear") {
+      input.clear();
+      if (status.stage === "failed" || status.stage === "capacity_reached") throw new BookJobClientError(status.error?.code ?? "job_failed", status.error?.message ?? "This book could not be processed safely.", 422);
+      return "cleared";
+    }
     if (action === "advance") {
-      const advanced = await input.client.advance(input.job); lastAdvanceAt = now();
+      let advanced: BookJobAdvanceResult;
+      try { advanced = await input.client.advance(input.job); }
+      catch (error) {
+        if (input.signal.aborted) return "aborted";
+        if (error instanceof BookJobClientError && error.status === 409) {
+          const latest = await input.client.status(input.job);
+          if (input.signal.aborted) return "aborted";
+          input.onStatus(latest);
+          if (latest.stage === "interrupted") return "paused";
+        }
+        throw error;
+      }
+      lastAdvanceAt = now();
+      if (input.signal.aborted) return "aborted";
+      if (advanced.outcome === "awaiting_extraction_manifest") {
+        if (!input.prepareExtractionManifest || !advanced.sourceFingerprint || !advanced.maxPages) throw new BookJobClientError("source_file_needed", "Select the same PDF to continue reading it.", 409);
+        await input.prepareExtractionManifest(advanced.sourceFingerprint, advanced.maxPages);
+      }
+      if (advanced.outcome === "awaiting_extraction_assets") {
+        if (!input.prepareExtractionPage || !advanced.request || !advanced.sourceFingerprint) throw new BookJobClientError("source_file_needed", "Select the same PDF to continue reading it.", 409);
+        await input.prepareExtractionPage(advanced.request, advanced.sourceFingerprint);
+      }
       if (advanced.outcome === "awaiting_assets") {
         if (!input.renderAssets || !advanced.renderRequests || !advanced.sourceFingerprint) throw new BookJobClientError("source_file_needed", "Select the same PDF to continue inspecting its images.", 409);
         await input.renderAssets(advanced.renderRequests, advanced.sourceFingerprint);

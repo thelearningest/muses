@@ -50,11 +50,24 @@ export class BookArtifactStore {
     jobId: string,
     body: ReadableStream<Uint8Array>,
     expiresAt: number,
+    byteSize: number,
+    sourceFingerprint?: string,
   ): Promise<void> {
-    await this.bucket.put(artifactKey(jobId, "source.pdf"), body, {
-      httpMetadata: { contentType: "application/pdf" },
-      customMetadata: expiryMetadata(expiresAt),
-    });
+    if (!Number.isSafeInteger(byteSize) || byteSize < 1 || byteSize > 50 * 1024 * 1024) throw new TypeError("Invalid source length");
+    // R2 needs a stream with known length. Validation wraps the request body and
+    // loses that runtime metadata; restore it without buffering the whole PDF.
+    const FixedStream = (globalThis as unknown as { FixedLengthStream: new (length: number) => ReadableWritablePair<Uint8Array, Uint8Array> }).FixedLengthStream;
+    const fixed = new FixedStream(byteSize);
+    const controller = new AbortController();
+    try {
+      await Promise.all([
+        body.pipeTo(fixed.writable, { signal: controller.signal }),
+        this.bucket.put(artifactKey(jobId, "source.pdf"), fixed.readable, {
+          httpMetadata: { contentType: "application/pdf" }, customMetadata: expiryMetadata(expiresAt),
+          ...(sourceFingerprint && /^[a-f0-9]{64}$/.test(sourceFingerprint) ? { sha256: sourceFingerprint } : {}),
+        }),
+      ]);
+    } finally { controller.abort(); }
   }
 
   async putJson(

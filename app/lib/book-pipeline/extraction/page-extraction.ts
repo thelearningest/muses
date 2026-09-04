@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { CanonicalBook, CanonicalBlock, CanonicalVisualReference } from "../contracts";
 import { boxSchema, validBox } from "../visual-agent/schema";
+export { nativeTextUsable } from "./policy";
 
 // Not named page.ts: this lives beneath the framework's app directory.
 export const EXTRACTION_PROMPT_VERSION = "page-extraction-v1";
@@ -40,11 +41,6 @@ export function parseExtractedPage(value: unknown, expectedPage: number): Extrac
 
 // Conservative fast path, not an OCR-accuracy score. Browser layout analysis
 // must independently indicate unambiguous ordering; missing evidence uses vision.
-export function nativeTextUsable(text: string, orderReliable: boolean): boolean {
-  if (!orderReliable || text.length < 160 || text.length > 30000 || /[\uFFFD\u0000]/u.test(text)) return false;
-  const meaningful = text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
-  return meaningful / text.length >= 0.45 && text.split(/\s+/u).filter(Boolean).length >= 20;
-}
 
 export type PageRecord = {
   page: ExtractedPage;

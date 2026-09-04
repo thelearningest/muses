@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { BookArtifactStore } from "../../app/lib/book-pipeline/artifact-store";
 import type {
@@ -104,7 +104,11 @@ describe("BookArtifactStore", () => {
     const store = new BookArtifactStore(bucket);
     const stream = new Blob(["%PDF-test"]).stream();
 
-    await store.putSource("job-a", stream, 10_000);
+    vi.stubGlobal("FixedLengthStream", class extends TransformStream {
+      constructor(length: number) { expect(length).toBe(9); super(); }
+    });
+    try { await store.putSource("job-a", stream, 10_000, 9); }
+    finally { vi.unstubAllGlobals(); }
     await store.putJson("job-a", "evidence/1.json", { card: 1 }, 10_000);
 
     expect(await store.exists("job-a", "source.pdf")).toBe(true);

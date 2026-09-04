@@ -37,7 +37,7 @@ type RepositoryPort = Pick<
 
 type StorePort = Pick<
   BookArtifactStore,
-  "putSource" | "delete" | "deleteJobArtifacts" | "getJson" | "get"
+  "putSource" | "putJson" | "delete" | "deleteJobArtifacts" | "getJson" | "get"
 >;
 
 export type BookJobApiDependencies = {
@@ -228,7 +228,8 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
         if (rawBody.byteSize > dependencies.config.maxPdfBytes) {
           throw new HttpProblem(413, "pdf_too_large", "The PDF exceeds the upload limit.");
         }
-        const remoteIp = request.headers.get("cf-connecting-ip");
+        const devLoopback = import.meta.env.DEV && ["localhost", "127.0.0.1", "[::1]"].includes(new URL(request.url).hostname);
+        const remoteIp = request.headers.get("cf-connecting-ip") ?? (devLoopback ? request.headers.get("x-book-local-network") : null);
         if (!remoteIp) throw new HttpProblem(400, "network_signal_required", "A network signal is required.");
         if (!(await dependencies.verifyTurnstile(rawBody.turnstileToken, remoteIp))) {
           throw new HttpProblem(403, "turnstile_failed", "Please complete the verification challenge again.");
@@ -271,6 +272,9 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
 
         const capabilityToken = dependencies.newCapability();
         const jobId = dependencies.newId();
+        // Pin before the DB record becomes visible. A failed R2 write must not
+        // leave a new job indistinguishable from a legacy Mistral job.
+        await dependencies.store.putJson(jobId, "ingestion.json", { version: 1, provider: dependencies.config.ocrProvider }, now + dependencies.config.sourceRecoveryHours * 3_600);
         await dependencies.repository.createJob({
           id: jobId,
           capabilityHash: await hashPrivateValue(
@@ -323,6 +327,8 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
             jobId,
             streamValidatedPdf(request.body, dependencies.config.maxPdfBytes),
             job.expiresAt,
+            contentLength,
+            job.sourceFingerprint,
           );
         } catch (error) {
           await dependencies.store.delete(jobId, "source.pdf");
@@ -362,14 +368,18 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
         const game = job.status === "complete"
           ? await dependencies.store.getJson(jobId, "game.json")
           : null;
+        const extraction = job.currentStage === "extracting_pages"
+          ? await dependencies.store.getJson<{ cursor: number; pageCount: number }>(jobId, "extraction/state.json") : null;
         return json({
           jobId,
           stage: publicStageFor(job.status),
           recoverable:
             job.status === "failed_recoverable" || job.status === "manual_retry_required",
-          progress: { completedUnits: job.batchCursor },
+          progress: extraction ? { completedUnits: extraction.cursor, totalUnits: extraction.pageCount } : { completedUnits: job.batchCursor },
           error: job.terminalErrorCategory
-            ? { code: job.terminalErrorCategory, message: "This job could not continue." }
+            ? { code: job.terminalErrorCategory, message: job.terminalErrorCategory === "extraction_quality_insufficient"
+              ? `The book could not be read reliably${extraction ? ` at PDF page ${extraction.cursor + 1}` : ""}, even after higher-resolution retries. No incomplete book was turned into a game.`
+              : job.terminalErrorCategory === "manual_retry_required" ? "The previous model request may have been charged. Confirm a retry to continue this job." : "This job could not continue." }
             : null,
           ...(game ? { game } : {}),
         });

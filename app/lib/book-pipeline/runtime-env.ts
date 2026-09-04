@@ -20,6 +20,7 @@ export interface D1DatabaseBinding {
 }
 
 export type R2PutOptions = {
+  sha256?: string;
   httpMetadata?: Record<string, string>;
   customMetadata?: Record<string, string>;
   onlyIf?: Record<string, unknown>;

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   cancelAndClear,
+  BookJobClient,
+  BookJobClientError,
   driveBookJob,
   loadResumableJob,
   persistValidGameThenAcknowledge,
@@ -29,6 +31,45 @@ function memoryStorage() {
 }
 
 describe("resumable book job client", () => {
+  it("surfaces a terminal extraction failure instead of silently removing the job", async () => {
+    const clear = vi.fn();
+    await expect(driveBookJob({ job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "failed" as const, recoverable: false, error: { code: "extraction_quality_insufficient", message: "Cannot read PDF page 6." } })), advance: vi.fn(), acknowledge: vi.fn() }, signal: new AbortController().signal, onStatus: vi.fn(), saveGame: vi.fn(), clear, sleep: vi.fn() })).rejects.toThrow("Cannot read PDF page 6.");
+    expect(clear).toHaveBeenCalledOnce();
+  });
+
+  it("loads the paused status and retry controls after a stage returns HTTP 409", async () => {
+    const status = vi.fn().mockResolvedValueOnce({ jobId: job.jobId, stage: "extracting_evidence", recoverable: false })
+      .mockResolvedValueOnce({ jobId: job.jobId, stage: "interrupted", recoverable: true });
+    const onStatus = vi.fn();
+    expect(await driveBookJob({ job, client: { status, advance: vi.fn().mockRejectedValue(new BookJobClientError("request_failed", "Paused", 409)), acknowledge: vi.fn() }, signal: new AbortController().signal, onStatus, saveGame: vi.fn(), clear: vi.fn(), sleep: vi.fn() })).toBe("paused");
+    expect(onStatus).toHaveBeenLastCalledWith({ jobId: job.jobId, stage: "interrupted", recoverable: true });
+  });
+  it("does not bind native browser fetch to the client instance", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = function (this: unknown) {
+      expect(this).not.toBeInstanceOf(BookJobClient);
+      return Promise.resolve(Response.json({ jobId: job.jobId, stage: "reading_source", recoverable: false }));
+    };
+    try { expect((await new BookJobClient().status(job)).stage).toBe("reading_source"); }
+    finally { globalThis.fetch = original; }
+  });
+  it("prepares only the requested extraction manifest and page before resuming", async () => {
+    const controller = new AbortController();
+    const prepareExtractionManifest = vi.fn(async () => undefined), prepareExtractionPage = vi.fn(async () => undefined);
+    const advance = vi.fn().mockResolvedValueOnce({ outcome: "awaiting_extraction_manifest", sourceFingerprint: "source", maxPages: 300 })
+      .mockResolvedValueOnce({ outcome: "awaiting_extraction_assets", sourceFingerprint: "source", request: { pageIndex: 7, revision: 1, parts: 2, allowNative: false } });
+    let sleeps = 0;
+    await driveBookJob({ job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "reading_source" as const, recoverable: false })), advance, acknowledge: vi.fn() }, signal: controller.signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(), prepareExtractionManifest, prepareExtractionPage, sleep: async () => { if (++sleeps === 2) controller.abort(); } });
+    expect(prepareExtractionManifest).toHaveBeenCalledWith("source", 300);
+    expect(prepareExtractionPage).toHaveBeenCalledWith({ pageIndex: 7, revision: 1, parts: 2, allowNative: false }, "source");
+    expect(advance).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not render or upload after cancellation during advance", async () => {
+    const controller = new AbortController(), prepareExtractionPage = vi.fn();
+    const result = await driveBookJob({ job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "reading_source" as const, recoverable: false })), advance: vi.fn(async () => { controller.abort(); return { outcome: "awaiting_extraction_assets", sourceFingerprint: "source", request: { pageIndex: 0, revision: 0, parts: 1, allowNative: true } }; }), acknowledge: vi.fn() }, signal: controller.signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(), prepareExtractionPage, sleep: vi.fn() });
+    expect(result).toBe("aborted"); expect(prepareExtractionPage).not.toHaveBeenCalled();
+  });
   it("polls status without advancing again while OCR is merely queued", async () => {
     const controller = new AbortController();
     const advance = vi.fn();

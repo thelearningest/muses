@@ -24,7 +24,7 @@ const PIPELINE_STAGES: Array<{ stage: PublicBookJobStage; label: string }> = [
   { stage: "uploading", label: "Secure upload" },
   { stage: "preparing", label: "Prepare source" },
   { stage: "waiting_for_ocr", label: "Read scanned pages" },
-  { stage: "reading_source", label: "Structure the book" },
+  { stage: "reading_source", label: "Read book pages" },
   { stage: "extracting_evidence", label: "Extract evidence" },
   { stage: "building_learning_arc", label: "Build learning arc" },
   { stage: "inspecting_visuals", label: "Inspect key visuals" },
@@ -160,20 +160,38 @@ export function BookRpgApp() {
     const job = activeJob;
     if (!hydrated || !job || job.stage === "uploading") return;
     const controller = new AbortController();
+    let rendererPromise: Promise<Awaited<ReturnType<typeof import("./visual-page-renderer").createVisualPageRenderer>>> | undefined;
+    const rendererFor = async (fingerprint: string) => {
+      if (!sourceFile.current) throw new Error("Select the same PDF below to continue processing it.");
+      const file = sourceFile.current;
+      rendererPromise ??= import("./visual-page-renderer").then(({ createVisualPageRenderer }) => createVisualPageRenderer(file));
+      const renderer = await rendererPromise;
+      if (renderer.fingerprint !== fingerprint) throw new Error("Select the same PDF used for this job.");
+      return renderer;
+    };
     void driveBookJob({
       job,
       client: clientRef.current,
       signal: controller.signal,
+      prepareExtractionManifest: async (fingerprint, maxPages) => {
+        const renderer = await rendererFor(fingerprint);
+        if (renderer.pageCount > maxPages) throw new Error(`This PDF exceeds the ${maxPages}-page limit.`);
+        if (!controller.signal.aborted) await clientRef.current.initializeExtraction(job, { sourceFingerprint: fingerprint, pageCount: renderer.pageCount });
+      },
+      prepareExtractionPage: async (request, fingerprint) => {
+        const renderer = await rendererFor(fingerprint);
+        if (controller.signal.aborted) return;
+        const asset = await renderer.prepareExtraction(request, fingerprint);
+        if (!controller.signal.aborted) await clientRef.current.uploadExtractionAsset(job, asset);
+      },
       renderAssets: async (requests, fingerprint) => {
-        if (!sourceFile.current) throw new Error("Select the same PDF below to continue inspecting its images.");
-        const { createVisualPageRenderer } = await import("./visual-page-renderer");
-        const renderer = await createVisualPageRenderer(sourceFile.current);
-        try {
-          for (const request of requests) {
-            if (controller.signal.aborted) return;
-            await clientRef.current.uploadVisualAsset(job, await renderer.render(request, fingerprint));
-          }
-        } finally { await renderer.destroy(); }
+        const renderer = await rendererFor(fingerprint);
+        for (const request of requests) {
+          if (controller.signal.aborted) return;
+          const asset = await renderer.render(request, fingerprint);
+          if (controller.signal.aborted) return;
+          await clientRef.current.uploadVisualAsset(job, asset);
+        }
       },
       onStatus: (status) => {
         setJobStatus(status);
@@ -192,7 +210,8 @@ export function BookRpgApp() {
         setActiveJob(null);
         setJobStatus(null);
       },
-    }).catch((jobError) => setError(messageFor(jobError)));
+    }).catch((jobError) => { if (!controller.signal.aborted) setError(messageFor(jobError)); })
+      .finally(async () => { const renderer = await rendererPromise?.catch(() => undefined); await renderer?.destroy(); });
     return () => controller.abort();
   }, [hydrated, activeJob, driveVersion]);
 
@@ -273,10 +292,10 @@ export function BookRpgApp() {
                 <button className="button button-primary" type="submit" disabled={!hydrated || !rightsConfirmed || !turnstileToken || isStarting}>{isStarting ? "Securing your upload…" : "Create my learning game"}<span aria-hidden="true">→</span></button>
               </form>
               <p className="generation-note">Limit: 5 attempts per browser or network in any 24 hours; 20 jobs site-wide each UTC day.</p>
-              <p className="privacy-note">Your PDF is processed temporarily by Mistral and OpenAI. Recovery files are kept for no more than 24 hours, then removed. Finished games stay only on this device.</p>
+              <p className="privacy-note">New books are processed temporarily by OpenAI; older jobs may also use Mistral. Recovery files are kept for no more than 24 hours, then removed. Finished games stay only on this device.</p>
             </>
           )}
-          {activeJob && <label className="file-field"><span>Resume image inspection with the same PDF</span><input type="file" accept="application/pdf,.pdf" onChange={(event) => { sourceFile.current = event.target.files?.[0] ?? null; if (sourceFile.current) { setError(""); setDriveVersion((v) => v + 1); } }} /><small>Keep this page open while images are being inspected. Reselecting the PDF does not start a new paid job.</small></label>}
+          {activeJob && <label className="file-field"><span>Resume processing with the same PDF</span><input type="file" accept="application/pdf,.pdf" onChange={(event) => { sourceFile.current = event.target.files?.[0] ?? null; if (sourceFile.current) { setError(""); setDriveVersion((v) => v + 1); } }} /><small>Keep this page open while pages and images are being prepared. Reselecting the PDF resumes this job without repeating completed extraction.</small></label>}
           <p className="form-error" role="alert" aria-live="assertive">{error}</p>
         </section>
         <section className="game-library" aria-labelledby="library-title">

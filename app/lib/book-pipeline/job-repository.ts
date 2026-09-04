@@ -407,6 +407,16 @@ export class BookJobRepository {
     return result.success && changes(result) === 1;
   }
 
+  async interruptExtraction(jobId: string, reason: "manual_retry_required" | "extraction_quality_insufficient" | "budget_exhausted", now: number): Promise<boolean> {
+    const terminal = reason === "extraction_quality_insufficient";
+    const status = terminal ? "failed_terminal" : reason === "manual_retry_required" ? "manual_retry_required" : "failed_recoverable";
+    const result = await this.db.prepare(`UPDATE book_jobs SET status = ?, resume_stage = ?,
+      terminal_error_category = ?, retry_count = retry_count + 1, updated_at = ?
+      WHERE id = ? AND status = 'extracting_pages' AND cancellation_requested = 0 AND expires_at > ?`)
+      .bind(status, terminal ? null : "extracting_pages", reason === "budget_exhausted" ? "global_capacity_reached" : reason, now, jobId, now).run();
+    return result.success && changes(result) === 1;
+  }
+
   async markRecoverable(
     jobId: string,
     resumeStage: BookJobStatus,

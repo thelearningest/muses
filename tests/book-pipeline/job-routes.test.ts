@@ -59,6 +59,7 @@ function makeDependencies(overrides: Partial<BookJobApiDependencies> = {}) {
     markCleanupState: vi.fn(async () => true),
   };
   const store = {
+    putJson: vi.fn(async () => undefined),
     putSource: vi.fn(async (_id: string, stream: ReadableStream<Uint8Array>) => {
       await new Response(stream).arrayBuffer();
     }),

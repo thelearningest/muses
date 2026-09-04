@@ -37,7 +37,7 @@ test("server-renders the book-to-RPG library shell", async () => {
   assert.match(html, /The City of Misfit Things/i);
   assert.match(html, /Create my learning game/i);
   assert.match(html, /5 attempts per browser or network in any 24 hours/i);
-  assert.match(html, /processed temporarily by Mistral and OpenAI/i);
+  assert.match(html, /New books are processed temporarily by OpenAI/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
@@ -98,7 +98,7 @@ test("ships the resumable, quota-protected PDF-to-RPG job flow", async () => {
   assert.match(shell, /I own this book or have permission to use it/);
   assert.match(shell, /design-book-rpg-library:v1/);
   assert.match(shell, /5 attempts per browser or network in any 24 hours/);
-  assert.match(shell, /processed temporarily by Mistral and OpenAI/);
+  assert.match(shell, /New books are processed temporarily by OpenAI/);
   assert.match(client, /create.+upload.+status.+advance.+acknowledge/s);
   assert.match(client, /RESUMABLE_JOB_KEY/);
   assert.match(client, /persistValidGameThenAcknowledge/);

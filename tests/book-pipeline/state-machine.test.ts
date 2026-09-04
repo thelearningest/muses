@@ -153,6 +153,7 @@ describe("book job state machine", () => {
         "cleaning",
         "complete",
         "created",
+        "extracting_pages",
         "failed_recoverable",
         "failed_terminal",
         "generating_game",

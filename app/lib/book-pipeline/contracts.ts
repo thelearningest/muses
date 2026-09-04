@@ -2,6 +2,7 @@ export type BookJobStatus =
   | "created"
   | "uploading"
   | "uploaded"
+  | "extracting_pages"
   | "ocr_submitting"
   | "ocr_queued"
   | "ocr_collecting"
