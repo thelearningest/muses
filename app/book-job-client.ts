@@ -9,6 +9,7 @@ export type BookJobAdvanceResult = { outcome: string; completedBatches?: number;
 export const RESUMABLE_JOB_KEY = "playable-books-active-job:v1";
 export const BROWSER_IDENTITY_KEY = "playable-books-browser-identity:v1";
 export const OCR_RECHECK_MS = 15_000;
+export const ADVANCE_TIMEOUT_MS = 150_000;
 
 export type ResumableBookJob = {
   jobId: string;
@@ -114,7 +115,9 @@ export class BookJobClient {
   }
 
   async advance(job: ResumableBookJob, retryConfirmed = false): Promise<BookJobAdvanceResult> {
-    return parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/advance`, { method: "POST", headers: this.headers(job, true), body: JSON.stringify({ retryConfirmed }) }));
+    return parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/advance`, {
+      method: "POST", headers: this.headers(job, true), body: JSON.stringify({ retryConfirmed }), signal: AbortSignal.timeout(ADVANCE_TIMEOUT_MS),
+    }));
   }
 
   async uploadVisualAsset(job: ResumableBookJob, asset: unknown): Promise<void> {
@@ -189,9 +192,19 @@ export async function driveBookJob(input: {
   let preparation: Promise<void> | undefined;
   let preparationError: unknown;
   let connectionRecoveries = 0;
-  let automaticPaidRecoveryUsed = false;
+  const automaticPaidRecoveries = new Set<string>();
   const prepared = new Set<string>();
   let preparationTotal = 0;
+  const automaticallyRecover = async (status: BookJobStatusResponse) => {
+    if (status.error?.code !== "manual_retry_required") return false;
+    const stage = status.resumeStage ?? "unknown";
+    if (automaticPaidRecoveries.has(stage)) return false;
+    automaticPaidRecoveries.add(stage);
+    await input.client.advance(input.job, true);
+    lastAdvanceAt = now();
+    await sleep(0, input.signal);
+    return true;
+  };
   try {
   while (!input.signal.aborted) {
     if (preparationError) throw preparationError;
@@ -215,13 +228,7 @@ export async function driveBookJob(input: {
       // retry for the same operation. Use that bounded recovery automatically
       // so a transient hosted timeout does not make the learner babysit a job.
       // A second interruption still pauses for explicit operator review.
-      if (!automaticPaidRecoveryUsed && status.error?.code === "manual_retry_required") {
-        automaticPaidRecoveryUsed = true;
-        await input.client.advance(input.job, true);
-        lastAdvanceAt = now();
-        await sleep(0, input.signal);
-        continue;
-      }
+      if (await automaticallyRecover(status)) continue;
       return "paused";
     }
     if (action === "clear") {
@@ -237,7 +244,7 @@ export async function driveBookJob(input: {
         // A lost HTTP response is not permission to repeat a paid provider call.
         // Re-read status first: the server's stage ownership/journal determines
         // whether work is waiting, completed, replayable, or needs explicit retry.
-        if (error instanceof TypeError && ++connectionRecoveries <= 2) {
+        if ((error instanceof TypeError || (error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name))) && ++connectionRecoveries <= 2) {
           await sleep(500, input.signal);
           continue;
         }
@@ -245,7 +252,10 @@ export async function driveBookJob(input: {
           const latest = await input.client.status(input.job);
           if (input.signal.aborted) return "aborted";
           input.onStatus(latest);
-          if (latest.stage === "interrupted") return "paused";
+          if (latest.stage === "interrupted") {
+            if (await automaticallyRecover(latest)) continue;
+            return "paused";
+          }
         }
         throw error;
       }

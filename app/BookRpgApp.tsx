@@ -194,6 +194,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     const applyStatus = (status: BookJobStatusResponse) => {
       if (controller.signal.aborted) return;
       setJobStatus(status);
+      if (status.stage !== "interrupted") setError("");
       saveResumableJob(window.localStorage, { ...job, stage: status.stage });
     };
     const statusPoll = window.setInterval(() => {
