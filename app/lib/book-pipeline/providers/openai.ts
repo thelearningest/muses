@@ -50,6 +50,17 @@ export class OpenAiUnusableResultError extends OpenAiIndeterminateRequestError {
   }
 }
 
+// The provider definitively completed this request but ran out of output room.
+// Callers with a bounded larger schema allowance may retry automatically while
+// durable accounting conservatively retains the first call's reservation.
+export class OpenAiOutputLimitError extends OpenAiUnusableResultError {
+  constructor() {
+    super();
+    this.name = "OpenAiOutputLimitError";
+    this.message = "The OpenAI result reached its output token limit";
+  }
+}
+
 type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
 export class OpenAiRejectedRequestError extends Error {
@@ -175,9 +186,11 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
     const value = await responseObject(response);
     if (value.status !== "completed" || typeof value.id !== "string" || !value.id) {
       const details = value.incomplete_details as { reason?: unknown } | undefined;
+      const outputLimited = value.status === "incomplete" && details?.reason === "max_output_tokens";
       console.warn("OpenAI request failed", { category: "unusable_response", requestId: response.headers.get("x-request-id"),
         status: ["completed", "incomplete", "failed", "cancelled", "queued", "in_progress"].includes(String(value.status)) ? value.status : "unknown",
         reason: details?.reason === "max_output_tokens" || details?.reason === "content_filter" ? details.reason : "unknown" });
+      if (outputLimited) throw new OpenAiOutputLimitError();
       throw new OpenAiUnusableResultError();
     }
     const text = outputText(value);

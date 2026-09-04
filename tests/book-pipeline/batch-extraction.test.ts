@@ -4,7 +4,7 @@ import { BookArtifactStore } from "../../app/lib/book-pipeline/artifact-store";
 import { BookJobRepository } from "../../app/lib/book-pipeline/job-repository";
 import { BookOperationRepository } from "../../app/lib/book-pipeline/operation-repository";
 import { durableStage } from "../../app/lib/book-pipeline/durable-stage";
-import type { StructuredOutputProvider } from "../../app/lib/book-pipeline/providers/openai";
+import { OpenAiOutputLimitError, type StructuredOutputProvider } from "../../app/lib/book-pipeline/providers/openai";
 import { MigratedD1 } from "./sqlite-d1";
 import { ConditionalR2 } from "./durable-fixture";
 
@@ -55,9 +55,13 @@ it.each([false, true])("extracts ready groups and publishes all evidence atomica
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     if (partial) release();
+    let outputLimited = false;
+    const outputLimits: number[] = [];
     const send = vi.fn(async (request: Parameters<StructuredOutputProvider["generateStructured"]>[0]) => {
+      outputLimits.push(request.maxOutputTokens ?? 0);
       if (++started === 2) release();
       await gate;
+      if (!partial && !outputLimited && JSON.parse(request.input).pages[0].pageIndex === 0) { outputLimited = true; throw new OpenAiOutputLimitError(); }
       return { responseId: "response", data: { bookTitle: "Source", pages: JSON.parse(request.input).pages.map((p: { pageIndex: number }) => page(p.pageIndex)) }, usage: { inputTokens: 100, outputTokens: 100, totalTokens: 200 } };
     });
     const owner = (await operations.acquire({ jobId: "job", stage: "extracting_pages", cursor: 0, policyHash: "a".repeat(64) }))!;
@@ -73,7 +77,9 @@ it.each([false, true])("extracts ready groups and publishes all evidence atomica
     expect(await advanceBatchExtraction(input)).toMatchObject({ outcome: "complete", completedPages: 16 });
     expect(await store.getJson("job", "canonical-book.json")).toBeNull();
     expect(await advanceBatchExtraction(input)).toMatchObject({ outcome: "complete" });
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledTimes(partial ? 2 : 3);
+    expect(outputLimits).toContain(6000);
+    if (!partial) expect(outputLimits).toContain(10000);
     expect(await durable.repository.commitStage({ jobId: "job", expectedStatus: "extracting_pages", nextStatus: "annotating_visuals", batchCursor: 0, now })).toBe(true);
     expect(await store.getJson("job", "canonical-book.json")).toMatchObject({ source: { pageCount: 16 } });
     expect(await store.getJson("job", "evidence-manifest.json")).toEqual({ batchCount: 1 });

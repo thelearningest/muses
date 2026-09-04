@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { OpenAiResponsesProvider, OpenAiEmbeddingsProvider, OpenAiIndeterminateRequestError } from "../../app/lib/book-pipeline/providers/openai";
+import { OpenAiResponsesProvider, OpenAiEmbeddingsProvider, OpenAiIndeterminateRequestError, OpenAiOutputLimitError } from "../../app/lib/book-pipeline/providers/openai";
 
 const request = { model: "gpt-5.6-luna", reasoningEffort: "none" as const, schemaName: "test", schema: { type: "object" }, instructions: "Extract evidence", input: "Source", safetyIdentifier: "test" };
 const valid = { id: "resp_test", status: "completed", output_text: '{"ok":true}', usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 } };
@@ -30,7 +30,6 @@ describe("paid provider failure boundaries", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it.each([
-    ["incomplete output", { ...valid, status: "incomplete", incomplete_details: { reason: "max_output_tokens" } }],
     ["refusal", { ...valid, output_text: undefined, output: [{ type: "message", content: [{ type: "refusal", refusal: "Cannot comply" }] }] }],
     ["invalid structured JSON", { ...valid, output_text: '{"ok":' }],
     ["missing usage", { ...valid, usage: undefined }],
@@ -39,6 +38,11 @@ describe("paid provider failure boundaries", () => {
   ])("retains the paid reservation and requires explicit retry for %s", async (_label, body) => {
     const fetcher = vi.fn(async () => Response.json(body));
     await expect(new OpenAiResponsesProvider("test", fetcher).generateStructured(request)).rejects.toBeInstanceOf(OpenAiIndeterminateRequestError);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("exposes a definite output-limit result to bounded automatic-retry callers", async () => {
+    const fetcher = vi.fn(async () => Response.json({ ...valid, status: "incomplete", incomplete_details: { reason: "max_output_tokens" } }));
+    await expect(new OpenAiResponsesProvider("test", fetcher).generateStructured(request)).rejects.toBeInstanceOf(OpenAiOutputLimitError);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it.each([408, 500, 502, 503, 504])("treats HTTP %s as possibly processed without retrying", async (status) => {

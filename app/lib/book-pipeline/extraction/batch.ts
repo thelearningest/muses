@@ -5,18 +5,27 @@ import { buildBookMap } from "../book-map-stage";
 import { chunkCanonicalBook } from "../chunk-book";
 import { validateEvidenceCards } from "../evidence-stage";
 import { mapConcurrent } from "../parallel";
-import type { StructuredOutputProvider } from "../providers/openai";
+import { OpenAiOutputLimitError, type StructuredOutputProvider } from "../providers/openai";
 import { boxSchema, validBox } from "../visual-agent/schema";
 import { extractionImageTokenBound, SOL_EXTRACTION_PRICE } from "./model-policy";
 import type { ExtractionAsset, ExtractionLimits, ExtractionPageRequest } from "./stage";
 
 export const BATCH_PROMPT_VERSION = "book-intelligence-batch-v1";
+const INITIAL_OUTPUT_TOKENS = 6_000;
+const RETRY_OUTPUT_TOKENS = 10_000;
 export const BATCH_STATE_PATH = "extraction/state.json";
 export type BatchExtractionState = {
   version: 4; promptVersion: typeof BATCH_PROMPT_VERSION; model: "gpt-5.6-sol";
   fingerprint: string; pageCount: number; cursor: number; batchSize: 8; concurrency: 8 | 12;
   limits: ExtractionLimits; startedAt: number;
   usage: { calls: number; inputTokens: number; outputTokens: number; estimatedMicros: number };
+};
+type SavedBatch = {
+  version: 1;
+  promptVersion: typeof BATCH_PROMPT_VERSION;
+  fingerprint: string;
+  pages: number[];
+  response: { responseId: string; data: BatchOutput; usage: { inputTokens: number; outputTokens: number; totalTokens: number } };
 };
 const entrySchema = z.object({
   pageIndex: z.number().int().min(0).max(299),
@@ -130,17 +139,39 @@ export async function advanceBatchExtraction(input: {
   let progress = Promise.resolve();
   const responses = await mapConcurrent(readyGroups, state.concurrency, async ({ pages, index }) => {
     if (!await input.isActive()) throw new Error("Inactive extraction");
+    const batchPath = `extraction/batches/${index}.json`;
+    const saved = await store.getJson<SavedBatch>(job.id, batchPath);
+    if (saved?.version === 1 && saved.promptVersion === BATCH_PROMPT_VERSION && saved.fingerprint === state.fingerprint &&
+      saved.pages.length === pages.length && saved.pages.every((page, offset) => page === pages[offset])) {
+      return { ...saved.response, data: validateBatchOutput(saved.response.data, pages) };
+    }
     const assets = await Promise.all(pages.map((page) => store.getJson<ExtractionAsset>(job.id, `extraction/assets/${page}-0.json`)));
     if (assets.some((asset, offset) => !asset || asset.pageIndex !== pages[offset] || asset.revision !== 0)) throw new Error("Missing extraction input");
     const images = assets.flatMap((asset) => asset!.images);
     const text = JSON.stringify({ pages: assets.map((asset) => ({ pageIndex: asset!.pageIndex, nativeText: asset!.nativeText })) });
     const tokens = new TextEncoder().encode(text + BATCH_INSTRUCTIONS + JSON.stringify(JSON_SCHEMA)).length + 1000 + images.reduce((sum, image) => sum + extractionImageTokenBound(state.model, image.width, image.height), 0);
-    const reserved = Math.ceil(tokens * SOL_EXTRACTION_PRICE.inputUsdPerMillion * 1.25 + 3600 * SOL_EXTRACTION_PRICE.outputUsdPerMillion);
+    const reserveFor = (outputTokens: number) => Math.ceil(tokens * SOL_EXTRACTION_PRICE.inputUsdPerMillion * 1.25 + outputTokens * SOL_EXTRACTION_PRICE.outputUsdPerMillion);
+    const reserved = reserveFor(INITIAL_OUTPUT_TOKENS);
     // Disjoint batch ceilings make the total dollar cap safe under concurrency.
     if (reserved > Math.floor(state.limits.maxMicros / groups.length)) throw new Error("Batch extraction budget is insufficient");
-    const response = await provider.partition!(index).generateStructured<unknown>({ model: state.model, reasoningEffort: "none", schemaName: "book_intelligence_batch",
-      schema: JSON_SCHEMA, instructions: BATCH_INSTRUCTIONS, input: text, images, maxOutputTokens: 3600, safetyIdentifier: job.identityHash });
+    const batchProvider = provider.partition!(index);
+    const generate = (maxOutputTokens: number) => batchProvider.generateStructured<unknown>({ model: state.model, reasoningEffort: "none", schemaName: "book_intelligence_batch",
+      schema: JSON_SCHEMA, instructions: BATCH_INSTRUCTIONS, input: text, images, maxOutputTokens, safetyIdentifier: job.identityHash });
+    let response: Awaited<ReturnType<StructuredOutputProvider["generateStructured"]>>;
+    try { response = await generate(INITIAL_OUTPUT_TOKENS); }
+    catch (error) {
+      if (!(error instanceof OpenAiOutputLimitError) || reserved + reserveFor(RETRY_OUTPUT_TOKENS) > Math.floor(state.limits.maxMicros / groups.length)) throw error;
+      response = await generate(RETRY_OUTPUT_TOKENS);
+    }
     const data = validateBatchOutput(response.data, pages);
+    const savedBatch: SavedBatch = { version: 1, promptVersion: BATCH_PROMPT_VERSION, fingerprint: state.fingerprint, pages,
+      response: { responseId: response.responseId, data, usage: response.usage } };
+    if (!await store.putJsonIfAbsent(job.id, batchPath, savedBatch, job.expiresAt)) {
+      const existing = await store.getJson<SavedBatch>(job.id, batchPath);
+      if (!existing || existing.version !== 1 || existing.promptVersion !== BATCH_PROMPT_VERSION || existing.fingerprint !== state.fingerprint ||
+        existing.pages.length !== pages.length || existing.pages.some((page, offset) => page !== pages[offset])) throw new Error("Conflicting extraction batch");
+      return { ...existing.response, data: validateBatchOutput(existing.response.data, pages) };
+    }
     processed += pages.length;
     const completed = processed;
     progress = progress.then(async () => {

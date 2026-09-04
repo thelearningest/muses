@@ -1,6 +1,6 @@
 import type { BookArtifactStore } from "./artifact-store";
 import { BookOperationRepository, type StageOwner, type VisualCallBudget } from "./operation-repository";
-import { OpenAiIndeterminateRequestError, OpenAiRejectedRequestError, type StructuredOutputProvider, type StructuredResponse } from "./providers/openai";
+import { OpenAiIndeterminateRequestError, OpenAiOutputLimitError, OpenAiRejectedRequestError, type StructuredOutputProvider, type StructuredResponse } from "./providers/openai";
 import type { EmbeddingProvider } from "./retrieval";
 
 export async function operationHash(value: unknown): Promise<string> {
@@ -49,6 +49,7 @@ export class PaidCallJournal {
       return result;
     } catch (error) {
       await this.operations.failCall(this.owner,call,!received && error instanceof OpenAiRejectedRequestError);
+      if (error instanceof OpenAiOutputLimitError) throw error;
       // Generic storage/SDK exceptions after dispatch are not proof of a free
       // request. The stage must stop for explicit user action in all such cases.
       throw new OpenAiIndeterminateRequestError();

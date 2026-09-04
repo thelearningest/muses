@@ -4,7 +4,7 @@ import { BookJobRepository } from "../../app/lib/book-pipeline/job-repository";
 import { BookOperationRepository, type StageOwner } from "../../app/lib/book-pipeline/operation-repository";
 import { PaidCallJournal } from "../../app/lib/book-pipeline/paid-call-journal";
 import { durableStage } from "../../app/lib/book-pipeline/durable-stage";
-import { OpenAiRejectedRequestError } from "../../app/lib/book-pipeline/providers/openai";
+import { OpenAiOutputLimitError, OpenAiRejectedRequestError } from "../../app/lib/book-pipeline/providers/openai";
 import type { StructuredOutputProvider } from "../../app/lib/book-pipeline/providers/openai";
 import { MigratedD1 } from "./sqlite-d1";
 import { ConditionalR2 } from "./durable-fixture";
@@ -56,6 +56,10 @@ describe("paid result recovery and atomic artifact publication", () => {
   it("releases only definite rejected requests", async () => {
     await expect(journal().execute("request",async () => { throw new OpenAiRejectedRequestError(401); },() => 10)).rejects.toThrow();
     expect(await operations.latestCall(owner,0)).toMatchObject({ state: "rejected", reserved_units: 0 });
+  });
+  it("preserves a definite output-limit signal for a bounded higher-limit retry", async () => {
+    await expect(journal().execute("request",async () => { throw new OpenAiOutputLimitError(); },() => 10)).rejects.toBeInstanceOf(OpenAiOutputLimitError);
+    expect(await operations.latestCall(owner,0)).toMatchObject({ state: "unknown", reserved_units: 100 });
   });
   it("keeps a late result private and retains its reservation after cancellation", async () => {
     await expect(journal().execute("request",async () => { db.database.exec("UPDATE book_jobs SET cancellation_requested=1"); return "late"; },() => 10)).rejects.toThrow();
