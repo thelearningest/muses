@@ -44,6 +44,8 @@ The resumed run exposed an invalid visual-verifier citation (`pageIndex-20` inst
 
 The selector also returned exact supplied preview IDs rather than parent candidate IDs. These now resolve only through the current eligible candidate's exact revision/part IDs; paired previews collapse to one candidate, and stale/unknown IDs remain rejected. The focused visual-agent checks (22) and rebuilt production Worker pass.
 
+**Completed local full-book integration:** the same 109-page job reached `acknowledged` at 2026-09-04 17:09:20 UTC (2026-09-05 01:09:20 Singapore), after the above resumptions. The browser saved and opened **The Atlas of Broken Lines**, nine quests, 1,480 total XP, sourced from *Making and Breaking the Grid*. A minimal browser smoke completed quest 1: inspect → correct diagnosis → correct repair → principle acquired, +100 XP, and a next-object control. This proves the repaired compiled local upload-to-playable path for this source, not fresh uninterrupted timing, all-quest manual quality, or a hosted deployment. No further broad tests were run.
+
 | Requirement | Evidence inspected | Finding / next work |
 | --- | --- | --- |
 | Fresh PDF with only OpenAI credentials | New jobs pin Luna ingestion; real browser upload reached page extraction without a Mistral key | Wired and partially live-tested. Full-book quality acceptance failed at PDF page 6; legacy jobs retain Mistral. |
