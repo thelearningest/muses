@@ -1,5 +1,5 @@
 import { it, expect, vi } from "vitest";
-import { initialBatchState, validateBatchOutput, advanceBatchExtraction } from "../../app/lib/book-pipeline/extraction/batch";
+import { initialBatchState, validateBatchOutput, advanceBatchExtraction, pendingBatchExtractionRequests } from "../../app/lib/book-pipeline/extraction/batch";
 import { BookArtifactStore } from "../../app/lib/book-pipeline/artifact-store";
 import { BookJobRepository } from "../../app/lib/book-pipeline/job-repository";
 import { BookOperationRepository } from "../../app/lib/book-pipeline/operation-repository";
@@ -10,6 +10,23 @@ import { ConditionalR2 } from "./durable-fixture";
 
 const page = (pageIndex: number) => ({ pageIndex, role: "lesson", concept: `Concept ${pageIndex}`, excerpt: `Evidence for concept ${pageIndex}.`,
   claim: `Evidence for concept ${pageIndex}.`, action: "compare", example: "", pitfall: "", prerequisites: [], visual: null, uncertainty: "Selected excerpt only." });
+
+it.each([1, 7, 8, 9, 100, 299, 300])("discovers preparation work across the supported page range (%i pages)", async (pageCount) => {
+  const state = initialBatchState("f", pageCount, { maxMicros: 15_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 });
+  const present = new Set<number>();
+  const store = { exists: vi.fn(async (_jobId: string, path: string) => present.has(Number(path.match(/assets\/(\d+)-/)?.[1]))) };
+  const first = await pendingBatchExtractionRequests({ jobId: "job", state, store });
+  expect(first).toHaveLength(pageCount);
+  expect(first.map((request) => request.pageIndex)).toEqual(Array.from({ length: pageCount }, (_, index) => index));
+  for (let index = 0; index < pageCount; index++) present.add(index);
+  expect(await pendingBatchExtractionRequests({ jobId: "job", state, store })).toEqual([]);
+});
+
+it("rejects page counts outside the manifest boundary", () => {
+  const limits = { maxMicros: 15_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 };
+  expect(() => initialBatchState("f", 0, limits)).toThrow(/manifest/i);
+  expect(() => initialBatchState("f", 301, limits)).toThrow(/manifest/i);
+});
 
 it("omits malformed individual pages without failing the book", () => {
   expect(validateBatchOutput({ bookTitle: null, pages: [page(0)] }, [0, 1]).pages.map((p) => p.role)).toEqual(["lesson", "unreadable"]);

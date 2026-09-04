@@ -23,7 +23,7 @@ import { runVisualStage } from "@/app/lib/book-pipeline/visual-agent/stage";
 import { prepareBatchReferences } from "@/app/lib/book-pipeline/visual-agent/batch-references";
 import { VisualQuestProvider } from "@/app/lib/book-pipeline/visual-agent/quest-provider";
 import { advanceExtraction } from "@/app/lib/book-pipeline/extraction/stage";
-import { advanceBatchExtraction, BATCH_STATE_PATH, type BatchExtractionState } from "@/app/lib/book-pipeline/extraction/batch";
+import { advanceBatchExtraction, BATCH_STATE_PATH, pendingBatchExtractionRequests, type BatchExtractionState } from "@/app/lib/book-pipeline/extraction/batch";
 import { lunaLimits } from "@/app/lib/book-pipeline/extraction/http";
 import { BookOperationRepository } from "@/app/lib/book-pipeline/operation-repository";
 import { durableStage } from "@/app/lib/book-pipeline/durable-stage";
@@ -98,6 +98,15 @@ export async function POST(request: Request, context: Context) {
     const ingestion = await store.getJson<{ provider: string; parallelQuests?: boolean; batchedExtraction?: boolean }>(job.id, "ingestion.json");
     const parallelQuests = ingestion?.parallelQuests === true;
     if (job.cancellationRequested || ["cancelled", "failed_terminal", "complete", "acknowledged", "cleaned"].includes(job.status)) return Response.json({ outcome: "inactive" });
+    let batchState: BatchExtractionState | null = null;
+    if (job.status === "extracting_pages" && ingestion?.batchedExtraction) {
+      batchState = await store.getJson<BatchExtractionState>(job.id, BATCH_STATE_PATH);
+      if (!batchState) throw new Error("Extraction manifest missing");
+      // Asset discovery is free, read-only work. Keep it outside the paid-stage
+      // lease so a large PDF cannot expire a lease before any model call starts.
+      const requests = await pendingBatchExtractionRequests({ jobId: job.id, state: batchState, store });
+      if (requests.length) return Response.json({ outcome: "awaiting_extraction_assets", requests, sourceFingerprint: batchState.fingerprint }, { headers: { "cache-control": "no-store" } });
+    }
     if ((job.status === "extracting_pages" && ingestion?.batchedExtraction) || ["mapping_evidence", "building_book_map", "retrieving_quest_evidence", "generating_game", "verifying_quests"].includes(job.status)) {
       const owner = await operations.acquire({ jobId: job.id, stage: job.status, cursor: job.batchCursor, retryConfirmed,
         policyHash: await operationHash({ version: parallelQuests ? "downstream-parallel-quests-v2" : "downstream-durable-v1", source: job.sourceFingerprint, config, visualLimits: lunaLimits(env,"BOOK_VISUAL") }) });
@@ -120,11 +129,11 @@ export async function POST(request: Request, context: Context) {
     if (job.status === "extracting_pages") {
       if (ingestion?.provider !== "luna") throw new Error("Extraction provider mismatch");
       if (ingestion.batchedExtraction) {
-        const state = await store.getJson<BatchExtractionState>(job.id, BATCH_STATE_PATH);
+        const state = batchState ?? await store.getJson<BatchExtractionState>(job.id, BATCH_STATE_PATH);
         if (!state) throw new Error("Extraction manifest missing");
         try {
           const result = await advanceBatchExtraction({ job, state, store, isActive: isStageActive,
-            provider: durable!.journal.structured(openAi()) });
+            provider: durable!.journal.structured(openAi()), assetsReady: true });
           if (result.outcome === "complete" && !await durable!.repository.commitStage({ jobId: job.id, expectedStatus: "extracting_pages", nextStatus: "annotating_visuals", batchCursor: 0, now })) return Response.json({ outcome: "inactive" });
           return Response.json(result, { headers: { "cache-control": "no-store" } });
         } catch {

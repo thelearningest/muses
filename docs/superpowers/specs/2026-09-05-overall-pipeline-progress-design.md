@@ -36,6 +36,8 @@ Within page reading, real browser preparation occupies 8–28% and model-complet
 
 The client performs a lightweight read-only status check while a long model request is in flight. This lets completed extraction batches reach the progress bar without starting another model request or waiting for the entire book-wide wave to return.
 
+For large PDFs, the browser finishes the server-requested preparation set before asking the extraction stage to advance again. The server discovers missing page packets before acquiring the paid-stage lease. This prevents repeated whole-book object scans and ensures a 1–300 page preparation pass cannot consume a model-operation lease before any model call begins.
+
 The label makes this distinction understandable: preparation shows values such as `144 of 210 pages prepared`, model extraction shows `144 of 210 pages read`, and milestone-only phases show the current activity without inventing a count.
 
 ## Recovery behavior

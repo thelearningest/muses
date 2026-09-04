@@ -39,7 +39,7 @@ describe("resumable book job client", () => {
     expect(status).toHaveBeenCalledTimes(2);
     expect(advance).toHaveBeenCalledOnce();
   });
-  it("advances ready batches while later pages are still preparing without duplicate uploads", async () => {
+  it("finishes the requested preparation set before advancing again", async () => {
     const controller = new AbortController();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -48,12 +48,15 @@ describe("resumable book job client", () => {
     const advance = vi.fn(async () => {
       if (advance.mock.calls.length === 2) {
         expect(prepareExtractionPage).toHaveBeenCalledOnce();
-        release();
         controller.abort();
       }
       return { outcome: "awaiting_extraction_assets", requests: [request], sourceFingerprint: "source" };
     });
-    expect(await driveBookJob({ job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "reading_source" as const, recoverable: false })), advance, acknowledge: vi.fn() }, signal: controller.signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(), prepareExtractionPage, sleep: vi.fn(async () => undefined) })).toBe("aborted");
+    const running = driveBookJob({ job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "reading_source" as const, recoverable: false })), advance, acknowledge: vi.fn() }, signal: controller.signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(), prepareExtractionPage, sleep: vi.fn(async () => undefined) });
+    await vi.waitFor(() => expect(prepareExtractionPage).toHaveBeenCalledOnce());
+    expect(advance).toHaveBeenCalledOnce();
+    release();
+    expect(await running).toBe("aborted");
     expect(advance).toHaveBeenCalledTimes(2);
     expect(prepareExtractionPage).toHaveBeenCalledOnce();
   });
@@ -76,6 +79,28 @@ describe("resumable book job client", () => {
     });
     expect(onPreparationProgress).toHaveBeenNthCalledWith(1, { completedPages: 0, totalPages: 3 });
     expect(onPreparationProgress).toHaveBeenLastCalledWith({ completedPages: 3, totalPages: 3 });
+  });
+  it("prepares 299 pages with bounded concurrency and monotonic progress", async () => {
+    const controller = new AbortController();
+    const requests = Array.from({ length: 299 }, (_, pageIndex) => ({ pageIndex, revision: 0, parts: 1 as const, allowNative: true, compact: true }));
+    let active = 0, peak = 0;
+    const progress: number[] = [];
+    const advance = vi.fn(async () => {
+      if (advance.mock.calls.length > 1) controller.abort();
+      return { outcome: "awaiting_extraction_assets", requests, sourceFingerprint: "source" };
+    });
+    await driveBookJob({
+      job,
+      client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "reading_source" as const, recoverable: false })), advance, acknowledge: vi.fn() },
+      signal: controller.signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(),
+      prepareExtractionPage: async () => { active++; peak = Math.max(peak, active); await Promise.resolve(); active--; },
+      onPreparationProgress: ({ completedPages, totalPages }) => { expect(totalPages).toBe(299); progress.push(completedPages); },
+      sleep: vi.fn(async () => undefined),
+    });
+    expect(peak).toBe(8);
+    expect(progress[0]).toBe(0);
+    expect(progress.at(-1)).toBe(299);
+    expect(progress.every((value, index) => index === 0 || value >= progress[index - 1])).toBe(true);
   });
   it("surfaces a terminal extraction failure instead of silently removing the job", async () => {
     const clear = vi.fn();

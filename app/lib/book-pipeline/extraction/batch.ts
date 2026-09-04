@@ -103,21 +103,29 @@ export function batchArtifacts(state: BatchExtractionState, filename: string, ba
   return { canonical, cards, bookMap, visualCandidates };
 }
 
+export async function pendingBatchExtractionRequests(input: {
+  jobId: string; state: BatchExtractionState; store: Pick<BookArtifactStore, "exists">;
+}): Promise<ExtractionPageRequest[]> {
+  const indexes = Array.from({ length: input.state.pageCount }, (_, index) => index);
+  const present = await mapConcurrent(indexes, 16, (index) => input.store.exists(input.jobId, `extraction/assets/${index}-0.json`));
+  return indexes.filter((index) => !present[index]).map((pageIndex) => ({ pageIndex, revision: 0, parts: 1, allowNative: true, compact: true }));
+}
+
 export async function advanceBatchExtraction(input: {
   job: { id: string; identityHash: string; originalFilename: string; expiresAt: number };
   state: BatchExtractionState; store: BookArtifactStore; provider: StructuredOutputProvider; isActive(): Promise<boolean>;
+  assetsReady?: boolean;
 }) {
   const { job, state, store, provider } = input;
   if (state.version !== 4 || state.promptVersion !== BATCH_PROMPT_VERSION || state.model !== "gpt-5.6-sol" || state.batchSize !== 8 || ![8, 12].includes(state.concurrency) || !provider.partition) throw new Error("Unsupported batch policy");
   const indexes = Array.from({ length: state.pageCount }, (_, index) => index);
-  const present = await mapConcurrent(indexes, 8, (index) => store.exists(job.id, `extraction/assets/${index}-0.json`));
-  const requests: ExtractionPageRequest[] = indexes.filter((index) => !present[index]).map((pageIndex) => ({ pageIndex, revision: 0, parts: 1, allowNative: true, compact: true }));
+  const requests = input.assetsReady ? [] : await pendingBatchExtractionRequests({ jobId: job.id, state, store });
   const groups = Array.from({ length: Math.ceil(state.pageCount / state.batchSize) }, (_, index) => indexes.slice(index * state.batchSize, (index + 1) * state.batchSize));
-  const readyGroups = groups.map((pages, index) => ({ pages, index })).filter((group) => group.pages.every((page) => present[page]));
   // One partial provider wave makes the remaining groups wait for a second full
   // model-latency wave. Let bounded browser preparation finish, then process the
   // complete book concurrently in a single wave.
-  if (readyGroups.length !== groups.length) return { outcome: "awaiting_extraction_assets" as const, requests, sourceFingerprint: state.fingerprint };
+  if (requests.length) return { outcome: "awaiting_extraction_assets" as const, requests, sourceFingerprint: state.fingerprint };
+  const readyGroups = groups.map((pages, index) => ({ pages, index }));
   let processed = 0;
   let progress = Promise.resolve();
   const responses = await mapConcurrent(readyGroups, state.concurrency, async ({ pages, index }) => {

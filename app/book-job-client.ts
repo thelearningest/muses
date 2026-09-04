@@ -245,6 +245,11 @@ export async function driveBookJob(input: {
             prepared.add(key(request));
             input.onPreparationProgress?.({ completedPages: prepared.size, totalPages: preparationTotal });
           }).then(() => { preparation = undefined; }, (error) => { preparationError = error; preparation = undefined; });
+          // The batch stage deliberately starts one model wave only after all
+          // requested packets exist. Wait here instead of repeatedly scanning
+          // hundreds of R2 keys while the browser is still uploading them.
+          await preparation;
+          if (preparationError) throw preparationError;
         }
       }
       if (advanced.outcome === "awaiting_assets") {
