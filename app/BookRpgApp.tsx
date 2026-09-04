@@ -95,7 +95,10 @@ function Turnstile({ onToken, siteKey }: { onToken(token: string): void; siteKey
   return <div className="turnstile-field" ref={container} aria-label="Human verification" />;
 }
 
-function JobProgress({ job, status, onRetry, onCancel }: { job: ResumableBookJob; status: BookJobStatusResponse | null; onRetry(): void; onCancel(): void }) {
+function JobProgress({ job, status, needsSourceFile, onSourceFile, onRetry, onCancel }: {
+  job: ResumableBookJob; status: BookJobStatusResponse | null; needsSourceFile: boolean;
+  onSourceFile(file: File): void; onRetry(): void; onCancel(): void;
+}) {
   const stage = status?.stage ?? job.stage;
   const interrupted = stage === "interrupted";
   const effectiveStage = interrupted ? status?.resumeStage : stage;
@@ -128,8 +131,15 @@ function JobProgress({ job, status, onRetry, onCancel }: { job: ResumableBookJob
       </div>
       <p className="generation-note">Keep this tab open while we prepare your game. This can take a few minutes.</p>
       {interrupted && <p className="job-interruption">Your completed steps are saved. Try again to continue from here.</p>}
+      {needsSourceFile && (
+        <label className="file-field resume-file">
+          <span>Select the same PDF to resume</span>
+          <input type="file" accept="application/pdf,.pdf" onChange={(event) => { const file = event.target.files?.[0]; if (file) onSourceFile(file); }} />
+          <small>Choose {job.filename}. We’ll match it to the saved job and keep completed work.</small>
+        </label>
+      )}
       <div className="job-actions">
-        {interrupted && <button className="button button-primary" type="button" onClick={onRetry}>Try again <span aria-hidden="true">→</span></button>}
+        {interrupted && <button className="button button-primary" type="button" disabled={needsSourceFile} onClick={onRetry}>Try again <span aria-hidden="true">→</span></button>}
         <button className="text-button text-button-light" type="button" onClick={onCancel}>Cancel upload</button>
       </div>
     </section>
@@ -288,7 +298,9 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
       <div className="library-grid">
         <section className="upload-panel" aria-labelledby="upload-title">
           <h2 id="upload-title">{activeJob ? "Your game is on its way" : "Start with a PDF"}</h2>
-          {activeJob ? <JobProgress job={activeJob} status={jobStatus} onRetry={() => void retryJob()} onCancel={() => void cancelJob()} /> : (
+          {activeJob ? <JobProgress job={activeJob} status={jobStatus} needsSourceFile={!sourceFile.current}
+            onSourceFile={(file) => { sourceFile.current = file; setError(""); setDriveVersion((value) => value + 1); }}
+            onRetry={() => void retryJob()} onCancel={() => void cancelJob()} /> : (
             <>
               <form onSubmit={createGame}>
                 <label className="file-field"><span>Choose your book</span><input ref={fileRef} type="file" accept="application/pdf,.pdf" required /><small>PDF, up to 50 MB · 300 pages maximum. Scans work too.</small></label>
@@ -301,7 +313,6 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
               <details className="upload-details"><summary>Upload limits & privacy</summary><p>You can start up to 5 uploads in 24 hours per browser or shared network. The site accepts up to 20 books a day, resetting at midnight UTC.</p><p>Your book is sent to OpenAI for processing. Temporary files are removed within 24 hours; older uploads may also have used Mistral. Your finished games are saved in this browser.</p></details>
             </>
           )}
-          {activeJob && !sourceFile.current && <label className="file-field resume-file"><span>Choose the same PDF to continue</span><input type="file" accept="application/pdf,.pdf" onChange={(event) => { sourceFile.current = event.target.files?.[0] ?? null; if (sourceFile.current) { setError(""); setDriveVersion((v) => v + 1); } }} /><small>Select {activeJob.filename}. Your completed steps will be kept.</small></label>}
           {activeJob && error && <p className="form-error" role="alert">{error}</p>}
         </section>
         <section className="game-library" aria-labelledby="library-title">
