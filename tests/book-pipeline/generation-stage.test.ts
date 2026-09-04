@@ -26,6 +26,18 @@ function map(): BookMap {
 }
 
 describe("evidence-driven generation", () => {
+  it("accounts for a paid response but does not publish after cancellation", async () => {
+    let active = true;
+    const provider = { generateStructured: vi.fn(async () => { active = false; return { responseId: "resp", data: {}, usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 } }; }) } as unknown as StructuredOutputProvider;
+    const repository = { commitStage: vi.fn(), markRecoverable: vi.fn(), appendOpenAiRequestId: vi.fn(), reserveProviderCost: vi.fn().mockResolvedValue(true), reconcileProviderCost: vi.fn() };
+    const store = { putJson: vi.fn() };
+    const result = await generateGameStage({
+      job: { id: "job", identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 }, bookMap: map(), contracts: contracts(), provider, repository, store,
+      config: { model: "gpt-5.6-sol", reasoningEffort: "high", reserveCostUnits: 100, maxCostUnits: 1000 }, now: 1, isActive: async () => active,
+    });
+    expect(result.outcome).toBe("inactive"); expect(store.putJson).not.toHaveBeenCalled(); expect(repository.commitStage).not.toHaveBeenCalled();
+    expect(repository.reconcileProviderCost).toHaveBeenCalledWith("job", 100, 1, 1);
+  });
   it("sends only the compact map selection and quest contracts, never a PDF or transcript", async () => {
     let supplied = "";
     const game: GameContent = { sourceTitle: "Source", title: "Game", subtitle: "Learn", setting: "Lab", quests: Array.from({ length: 4 }, (_, index) => quest(index)) };

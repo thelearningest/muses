@@ -341,6 +341,7 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
             terminalErrorFor(streamError),
             dependencies.now(),
             job.expiresAt,
+            "uploading",
           );
           throw new HttpProblem(
             streamError.kind === "size" ? 413 : 400,

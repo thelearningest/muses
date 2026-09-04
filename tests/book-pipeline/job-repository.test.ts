@@ -125,7 +125,7 @@ describe("BookJobRepository", () => {
   beforeEach(() => {
     binding = new SqliteD1();
     installSchema(binding.database);
-    repository = new BookJobRepository(binding);
+    repository = new BookJobRepository(binding, () => 1000);
   });
 
   afterEach(() => binding.database.close());
@@ -161,6 +161,64 @@ describe("BookJobRepository", () => {
     expect(await repository.interruptExtraction(baseJob.id, "manual_retry_required", baseJob.expiresAt)).toBe(false);
     await repository.requestCancellation(baseJob.id, baseJob.capabilityHash, 1004);
     expect(await repository.interruptExtraction(baseJob.id, "extraction_quality_insufficient", 1005)).toBe(false);
+  });
+
+  it("rejects late completion and recoverable errors after cancellation", async () => {
+    await repository.createJob(baseJob);
+    await repository.claimStage({ jobId: baseJob.id, capabilityHash: baseJob.capabilityHash, expectedStatus: "created", claimedStatus: "verifying_quests", now: 1001 });
+    await repository.requestCancellation(baseJob.id, baseJob.capabilityHash, 1002);
+    await repository.markTerminal(baseJob.id, "cancelled", null, 1003, baseJob.expiresAt);
+    expect(await repository.markTerminal(baseJob.id, "complete", null, 1004, baseJob.expiresAt)).toBe(false);
+    expect(await repository.markRecoverable(baseJob.id, "verifying_quests", "failed_recoverable", "provider_unavailable", 1005)).toBe(false);
+    expect((await repository.getJob(baseJob.id))?.status).toBe("cancelled");
+  });
+
+  it("rejects a stale stage error after another request advances the job", async () => {
+    await repository.createJob(baseJob);
+    await repository.claimStage({ jobId: baseJob.id, capabilityHash: baseJob.capabilityHash, expectedStatus: "created", claimedStatus: "mapping_evidence", now: 1001 });
+    await repository.commitStage({ jobId: baseJob.id, expectedStatus: "mapping_evidence", nextStatus: "building_book_map", now: 1002 });
+    expect(await repository.markRecoverable(baseJob.id, "mapping_evidence", "failed_recoverable", "provider_unavailable", 1003)).toBe(false);
+    expect((await repository.getJob(baseJob.id))?.status).toBe("building_book_map");
+  });
+
+  it("does not advance, complete, or reserve paid work for an expired job", async () => {
+    await repository.createJob(baseJob);
+    await repository.claimStage({ jobId: baseJob.id, capabilityHash: baseJob.capabilityHash, expectedStatus: "created", claimedStatus: "verifying_quests", now: 1001 });
+    expect(await repository.commitStage({ jobId: baseJob.id, expectedStatus: "verifying_quests", nextStatus: "verifying_quests", batchCursor: 2, now: baseJob.expiresAt })).toBe(false);
+    expect(await repository.markTerminal(baseJob.id, "complete", null, baseJob.expiresAt, baseJob.expiresAt + 1000)).toBe(false);
+    expect(await repository.reserveProviderCost(baseJob.id, 1, 10, baseJob.expiresAt)).toBe(false);
+    expect((await repository.getJob(baseJob.id))?.expiresAt).toBe(baseJob.expiresAt);
+  });
+
+  it("rechecks wall time after a long provider call and never extends retention", async () => {
+    let wallTime = 1000;
+    repository = new BookJobRepository(binding, () => wallTime);
+    await repository.createJob(baseJob);
+    await repository.claimStage({ jobId: baseJob.id, capabilityHash: baseJob.capabilityHash, expectedStatus: "created", claimedStatus: "verifying_quests", now: 1001 });
+    wallTime = baseJob.expiresAt;
+    expect(await repository.markTerminal(baseJob.id, "complete", null, 1002, baseJob.expiresAt + 1000)).toBe(false);
+    expect(await repository.markRecoverable(baseJob.id, "verifying_quests", "failed_recoverable", "provider_unavailable", 1002)).toBe(false);
+    expect(await repository.reserveProviderCost(baseJob.id, 1, 100, 1002)).toBe(false);
+    expect(await repository.commitStage({ jobId: baseJob.id, expectedStatus: "verifying_quests", nextStatus: "verifying_quests", now: 1002 })).toBe(false);
+    expect(await repository.markTerminal(baseJob.id, "cancelled", null, 1002, baseJob.expiresAt + 1000)).toBe(true);
+    expect((await repository.getJob(baseJob.id))?.expiresAt).toBe(baseJob.expiresAt);
+  });
+
+  it("can guard the expected cursor and terminal stage against stale results", async () => {
+    await repository.createJob(baseJob);
+    await repository.claimStage({ jobId: baseJob.id, capabilityHash: baseJob.capabilityHash, expectedStatus: "created", claimedStatus: "mapping_evidence", now: 1001 });
+    expect(await repository.commitStage({ jobId: baseJob.id, expectedStatus: "mapping_evidence", nextStatus: "mapping_evidence", expectedBatchCursor: 0, batchCursor: 1, now: 1002 })).toBe(true);
+    expect(await repository.commitStage({ jobId: baseJob.id, expectedStatus: "mapping_evidence", nextStatus: "mapping_evidence", expectedBatchCursor: 0, batchCursor: 1, now: 1003 })).toBe(false);
+    expect(await repository.markRecoverable(baseJob.id, "mapping_evidence", "failed_recoverable", "provider_unavailable", 1003, "mapping_evidence", 0)).toBe(false);
+    expect(await repository.markTerminal(baseJob.id, "failed_terminal", "verification_failed", 1004, baseJob.expiresAt, "verifying_quests")).toBe(false);
+  });
+
+  it("preserves the legacy OCR resume target without accepting errors from other stages", async () => {
+    await repository.createJob(baseJob);
+    await repository.claimStage({ jobId: baseJob.id, capabilityHash: baseJob.capabilityHash, expectedStatus: "created", claimedStatus: "ocr_submitting", now: 1001 });
+    expect(await repository.markRecoverable(baseJob.id, "uploaded", "manual_retry_required", "manual_retry_required", 1002, "ocr_submitting")).toBe(true);
+    expect(await repository.resumeRecoverable(baseJob.id, baseJob.capabilityHash, 1003)).toBe(true);
+    expect((await repository.getJob(baseJob.id))?.status).toBe("uploaded");
   });
 
   it("reserves provider cost only within the per-job ceiling", async () => {
@@ -222,5 +280,14 @@ describe("BookJobRepository", () => {
 
     const expired = await repository.listExpiredJobs(3_000, 10);
     expect(expired.map((job) => job.id)).toEqual([baseJob.id]);
+  });
+
+  it("still permits normal completion and acknowledgement before expiry", async () => {
+    await repository.createJob(baseJob);
+    await repository.claimStage({ jobId: baseJob.id, capabilityHash: baseJob.capabilityHash, expectedStatus: "created", claimedStatus: "verifying_quests", now: 1001 });
+    expect(await repository.markTerminal(baseJob.id, "complete", null, 1002, baseJob.expiresAt + 1000)).toBe(true);
+    expect((await repository.getJob(baseJob.id))?.expiresAt).toBe(baseJob.expiresAt);
+    expect(await repository.acknowledge(baseJob.id, baseJob.capabilityHash, 1003)).toBe(true);
+    expect((await repository.getJob(baseJob.id))?.status).toBe("acknowledged");
   });
 });

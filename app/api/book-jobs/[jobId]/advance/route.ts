@@ -84,6 +84,11 @@ export async function POST(request: Request, context: Context) {
     const store = new BookArtifactStore(env.BOOK_JOBS);
     if (job.cancellationRequested || ["cancelled", "failed_terminal", "complete", "acknowledged", "cleaned"].includes(job.status)) return Response.json({ outcome: "inactive" });
     const ingestion = await store.getJson<{ provider: string }>(job.id, "ingestion.json");
+    const stageJob = job;
+    const isStageActive = async () => {
+      const latest = await repository.getAuthorizedJob(stageJob.id, capabilityHash);
+      return !!latest && latest.status === stageJob.status && latest.batchCursor === stageJob.batchCursor && !latest.cancellationRequested && latest.expiresAt > Date.now() / 1000;
+    };
     if (job.status === "uploaded" && ingestion?.provider === "luna") return Response.json({ outcome: "awaiting_extraction_manifest", sourceFingerprint: job.sourceFingerprint, maxPages: config.maxPages }, { headers: { "cache-control": "no-store" } });
     if (job.status === "extracting_pages") {
       if (ingestion?.provider !== "luna") throw new Error("Extraction provider mismatch");
@@ -197,6 +202,7 @@ export async function POST(request: Request, context: Context) {
       if (!bookMap || !evidence) return Response.json({ error: { code: "pipeline_artifact_missing" } }, { status: 409 });
       const result = await generateGameStage({
         job,
+        isActive: isStageActive,
         bookMap,
         contracts: evidence.contracts,
         images: await questVisualImages(store, job.id, evidence.contracts),
@@ -221,6 +227,7 @@ export async function POST(request: Request, context: Context) {
       if (!draft || !evidence) return Response.json({ error: { code: "pipeline_artifact_missing" } }, { status: 409 });
       const result = await verifyNextQuestStage({
         job,
+        isActive: isStageActive,
         game: draft.game,
         contracts: evidence.contracts,
         provider: new VisualQuestProvider(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")), store, job,

@@ -72,9 +72,11 @@ export async function generateGameStage(input: {
   store: { putJson(jobId: string, path: string, value: unknown, expiresAt: number): Promise<void> };
   config: { model: string; reasoningEffort: ReasoningEffort; reserveCostUnits?: number; maxCostUnits?: number };
   now: number;
+  isActive?: () => Promise<boolean>;
 }) {
   let reserved = false;
   try {
+    if (input.isActive && !await input.isActive()) return { outcome: "inactive" as const };
     if (input.config.reserveCostUnits && input.config.maxCostUnits && input.repository.reserveProviderCost &&
       !(await input.repository.reserveProviderCost(input.job.id, input.config.reserveCostUnits, input.config.maxCostUnits, input.now))) {
       throw new Error("Provider budget exhausted");
@@ -96,6 +98,7 @@ export async function generateGameStage(input: {
       reserved = false;
     }
     const game = parseGameContent(response.data);
+    if (input.isActive && !await input.isActive()) return { outcome: "inactive" as const };
     if (!game) throw new Error("Generated game failed schema validation");
     const issues = validateGameAgainstContracts(game, input.contracts);
     if (issues.length > 0) throw new Error(`Generated game failed deterministic validation: ${issues.join(",")}`);
@@ -104,7 +107,7 @@ export async function generateGameStage(input: {
       questContractIds: Object.fromEntries(game.quests.map((quest, index) => [quest.id, input.contracts[index].id])),
     }, input.job.expiresAt);
     await input.repository.appendOpenAiRequestId(input.job.id, response.requestId ?? response.responseId, input.now);
-    await input.repository.commitStage({ jobId: input.job.id, expectedStatus: "generating_game", nextStatus: "verifying_quests", now: input.now, batchCursor: 0 });
+    if (await input.repository.commitStage({ jobId: input.job.id, expectedStatus: "generating_game", nextStatus: "verifying_quests", now: input.now, batchCursor: 0 }) === false) return { outcome: "inactive" as const };
     return { outcome: "complete" as const, questCount: game.quests.length };
   } catch (error) {
     const manual = error instanceof OpenAiIndeterminateRequestError;

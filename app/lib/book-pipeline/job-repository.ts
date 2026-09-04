@@ -118,7 +118,11 @@ const JOB_COLUMNS = `
 `;
 
 export class BookJobRepository {
-  constructor(private readonly db: D1DatabaseBinding) {}
+  constructor(private readonly db: D1DatabaseBinding, private readonly clock = () => Math.floor(Date.now() / 1000)) {}
+
+  // A provider call may finish long after the route's initial timestamp.
+  // Tests inject their own clock; production always checks the current time.
+  private liveTime(startedAt: number): number { return Math.max(startedAt, this.clock()); }
 
   async createJob(input: {
     id: string;
@@ -183,6 +187,7 @@ export class BookJobRepository {
     claimedStatus: BookJobStatus;
     now: number;
   }): Promise<boolean> {
+    const now = this.liveTime(input.now);
     const result = await this.db
       .prepare(`
         UPDATE book_jobs
@@ -193,11 +198,11 @@ export class BookJobRepository {
       .bind(
         input.claimedStatus,
         input.claimedStatus,
-        input.now,
+        now,
         input.jobId,
         input.capabilityHash,
         input.expectedStatus,
-        input.now,
+        now,
       )
       .run();
     return result.success && changes(result) === 1;
@@ -209,21 +214,27 @@ export class BookJobRepository {
     nextStatus: BookJobStatus;
     now: number;
     batchCursor?: number;
+    expectedBatchCursor?: number;
   }): Promise<boolean> {
+    const now = this.liveTime(input.now);
     const result = await this.db
       .prepare(`
         UPDATE book_jobs
         SET status = ?, current_stage = ?, updated_at = ?,
             batch_cursor = COALESCE(?, batch_cursor)
-        WHERE id = ? AND status = ? AND cancellation_requested = 0
+        WHERE id = ? AND status = ? AND cancellation_requested = 0 AND expires_at > ?
+          AND (? IS NULL OR batch_cursor = ?)
       `)
       .bind(
         input.nextStatus,
         input.nextStatus,
-        input.now,
+        now,
         input.batchCursor ?? null,
         input.jobId,
         input.expectedStatus,
+        now,
+        input.expectedBatchCursor ?? null,
+        input.expectedBatchCursor ?? null,
       )
       .run();
     return result.success && changes(result) === 1;
@@ -304,13 +315,17 @@ export class BookJobRepository {
     ceiling: number,
     now: number,
   ): Promise<boolean> {
+    now = this.liveTime(now);
+    if (!Number.isSafeInteger(units) || units <= 0 || !Number.isSafeInteger(ceiling) || ceiling <= 0) return false;
     const result = await this.db
       .prepare(`
         UPDATE book_jobs
         SET reserved_cost_units = reserved_cost_units + ?, updated_at = ?
         WHERE id = ? AND reserved_cost_units + actual_cost_units + ? <= ?
+          AND cancellation_requested = 0 AND expires_at > ?
+          AND status NOT IN ('cancelled', 'complete', 'acknowledged', 'failed_terminal', 'cleaning', 'cleaned', 'failed_recoverable', 'manual_retry_required')
       `)
-      .bind(units, now, jobId, units, ceiling)
+      .bind(units, now, jobId, units, ceiling, now)
       .run();
     return result.success && changes(result) === 1;
   }
@@ -353,12 +368,14 @@ export class BookJobRepository {
     capabilityHash: string,
     now: number,
   ): Promise<boolean> {
+    now = this.liveTime(now);
     const result = await this.db
       .prepare(`
         UPDATE book_jobs SET status = 'acknowledged', updated_at = ?
         WHERE id = ? AND capability_hash = ? AND status = 'complete'
+          AND cancellation_requested = 0 AND expires_at > ?
       `)
-      .bind(now, jobId, capabilityHash)
+      .bind(now, jobId, capabilityHash, now)
       .run();
     return result.success && changes(result) === 1;
   }
@@ -369,15 +386,26 @@ export class BookJobRepository {
     errorCategory: SafeBookJobErrorCategory | null,
     now: number,
     expiresAt: number,
+    expectedStatus?: BookJobStatus,
   ): Promise<boolean> {
+    now = this.liveTime(now);
     const result = await this.db
       .prepare(`
         UPDATE book_jobs
         SET status = ?, current_stage = ?, terminal_error_category = ?,
-            terminal_at = ?, updated_at = ?, expires_at = ?
-        WHERE id = ? AND status != 'cleaned'
+            terminal_at = ?, updated_at = ?, expires_at = MIN(expires_at, ?)
+        WHERE id = ? AND status NOT IN ('cleaned', 'cleaning', 'acknowledged', 'cancelled')
+          AND (? IS NULL OR status = ?)
+          AND (
+            ? = 'cancelled'
+            OR (cancellation_requested = 0 AND expires_at > ? AND (
+              (? = 'complete' AND status = 'verifying_quests')
+              OR (? = 'failed_terminal' AND status NOT IN ('complete', 'failed_terminal'))
+            ))
+          )
       `)
-      .bind(status, status, errorCategory, now, now, expiresAt, jobId)
+      .bind(status, status, errorCategory, now, now, expiresAt, jobId,
+        expectedStatus ?? null, expectedStatus ?? null, status, now, status, status)
       .run();
     return result.success && changes(result) === 1;
   }
@@ -408,6 +436,7 @@ export class BookJobRepository {
   }
 
   async interruptExtraction(jobId: string, reason: "manual_retry_required" | "extraction_quality_insufficient" | "budget_exhausted", now: number): Promise<boolean> {
+    now = this.liveTime(now);
     const terminal = reason === "extraction_quality_insufficient";
     const status = terminal ? "failed_terminal" : reason === "manual_retry_required" ? "manual_retry_required" : "failed_recoverable";
     const result = await this.db.prepare(`UPDATE book_jobs SET status = ?, resume_stage = ?,
@@ -423,19 +452,25 @@ export class BookJobRepository {
     status: "failed_recoverable" | "manual_retry_required",
     errorCategory: SafeBookJobErrorCategory,
     now: number,
+    expectedStatus: BookJobStatus = resumeStage,
+    expectedBatchCursor?: number,
   ): Promise<boolean> {
+    now = this.liveTime(now);
     const result = await this.db
       .prepare(`
         UPDATE book_jobs SET status = ?, resume_stage = ?, current_stage = ?,
           terminal_error_category = ?, retry_count = retry_count + 1, updated_at = ?
-        WHERE id = ? AND status != 'cleaned'
+        WHERE id = ? AND status = ? AND cancellation_requested = 0 AND expires_at > ?
+          AND status NOT IN ('cancelled', 'complete', 'acknowledged', 'failed_terminal', 'cleaning', 'cleaned')
+          AND (? IS NULL OR batch_cursor = ?)
       `)
-      .bind(status, resumeStage, resumeStage, errorCategory, now, jobId)
+      .bind(status, resumeStage, resumeStage, errorCategory, now, jobId, expectedStatus, now, expectedBatchCursor ?? null, expectedBatchCursor ?? null)
       .run();
     return result.success && changes(result) === 1;
   }
 
   async resumeRecoverable(jobId: string, capabilityHash: string, now: number): Promise<boolean> {
+    now = this.liveTime(now);
     const result = await this.db
       .prepare(`
         UPDATE book_jobs SET status = resume_stage, current_stage = resume_stage,

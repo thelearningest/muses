@@ -1,6 +1,6 @@
 # Selective stronger extraction fallback
 
-Status: proposed; approval requested, not enabled.
+Status: approved by the user on 2026-09-04 ("sure approve, as long as it works"); implementation and acceptance testing in progress.
 
 The approved Luna-only website run stopped at PDF page 6. A prompt-only diagnostic produced a plausible but incorrect source term. One Sol call corrected the inspected contents text for an estimated $0.0314. See the fresh website test report.
 

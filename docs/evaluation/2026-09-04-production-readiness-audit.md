@@ -2,7 +2,7 @@
 
 Status: incomplete; active goal unchanged. The prior goal turn made progress through implemented fixes and a passing cached-source integration, not full production acceptance.
 
-Update: the approved extraction core, authenticated routes and browser preparation are implemented. A fresh full-PDF upload reached real local D1/R2 and Luna without Mistral, but failed closed at PDF page 6 after committing five pages. A targeted Sol diagnostic improved text fidelity; a selective fallback is proposed, not enabled. See `2026-09-04-full-book-website-test.md`. Full-book acceptance remains pending.
+Update: the approved extraction core, authenticated routes and browser preparation are implemented. The first fresh full-PDF upload reached real local D1/R2 and Luna without Mistral, but failed closed at PDF page 6. The user then approved selective Sol fallback, now implemented for new version-2 manifests. The production single-page regression passes; a fresh website run reached 8/109 pages before being paused for source-fidelity errors in a Luna page marked readable. An independent accuracy check is proposed, not implemented. Lifecycle regression checks also reject cancelled/expired/stale-stage transitions. See `2026-09-04-selective-extraction-test.md` for current evidence and remaining limits. Full-book acceptance remains pending.
 
 The source-fidelity audit also reproduced and fixed four evidence-validation gaps: wrong block/page association, fabricated excerpts, invalid numeric/empty anchors, and cross-section citation borrowing. Model input now includes each block's own page index. The older mocked integration fixture was corrected to use its actual canonical excerpt and section rather than an invented quotation.
 

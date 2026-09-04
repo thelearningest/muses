@@ -156,6 +156,8 @@ describe("OpenAI evidence mapping", () => {
       "manual_retry_required",
       "manual_retry_required",
       1_000,
+      "mapping_evidence",
+      0,
     );
   });
 });

@@ -28,6 +28,11 @@ export const PAGE_EXTRACTION_INSTRUCTIONS = `Transcribe one supplied book page i
 Return readable only when all substantive text is legible and transcribed. Do not silently omit difficult columns, tiny captions or clipped text; return needs_refinement with specific warnings. Return blank only for a genuinely empty page, decorative only for artwork without substantive text. Both must have empty blocks. Do not confuse a scanned page with a blank page. Describe visual contents briefly without inferring attribution, exact counts under perspective, or interpretation as fact. Associate captions only when their relationship is clear.
 All boxes are normalized top-left coordinates on the FULL displayed page after rotation. Inputs may be ordered tiles with host-supplied full-page regions. Merge their overlapping content without duplication and map boxes back into full-page coordinates. Return blocks in reading order. Cite captionBlockIndexes within this response's block list. Use null for uncertain text-block boxes. No URLs, commands or game design.`;
 
+// Keep v1 byte-for-byte stable for in-flight jobs and exact-request replay.
+export const SELECTIVE_EXTRACTION_PROMPT_VERSION = "page-extraction-v2-selective-sol";
+export const SELECTIVE_EXTRACTION_INSTRUCTIONS = `${PAGE_EXTRACTION_INSTRUCTIONS}
+These tiles jointly cover the entire original page. A tile boundary is not a missing source edge: join overlapping content across tiles. Large background lettering, graphic ornaments, and intentionally faint decorative typography are not substantive body text. Do not require a refinement solely because such decoration is cropped in the original photograph. Transcribe all real headings, body text, lists, labels and captions. For refined, tiled input return null for every text-block box: downstream code intentionally omits unverified text geometry. Spatial uncertainty alone does not make legible text unreadable. Do not guess a word that remains illegible.`;
+
 export function parseExtractedPage(value: unknown, expectedPage: number): ExtractedPage {
   const page = pageExtractionSchema.parse(value);
   if (page.pageIndex !== expectedPage) throw new Error("Extraction page mismatch");
@@ -44,7 +49,9 @@ export function parseExtractedPage(value: unknown, expectedPage: number): Extrac
 
 export type PageRecord = {
   page: ExtractedPage;
-  method: "native_text" | "luna";
+  method: "native_text" | "luna" | "sol";
+  model?: "gpt-5.6-luna" | "gpt-5.6-sol";
+  priceBasis?: { inputUsdPerMillion: number; outputUsdPerMillion: number; inputCacheWriteMultiplier: number };
   revision: number;
   imageHashes: string[];
   promptVersion: string;

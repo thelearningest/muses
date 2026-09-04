@@ -33,6 +33,28 @@ function response<T>(data: T) {
 }
 
 describe("targeted quest verification", () => {
+  it("does not repair or publish when cancelled during verification", async () => {
+    let active = true;
+    const provider = { generateStructured: vi.fn(async () => { active = false; return response({ accepted: false, issues: ["repair needed"] }); }) } as unknown as StructuredOutputProvider;
+    const repo = repository(); const store = { putJson: vi.fn() };
+    const result = await verifyNextQuestStage({
+      job: { id: "job", batchCursor: 0, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 },
+      game: game(), contracts: makeContracts(), provider, repository: repo, store,
+      config: { model: "gpt-5.4-mini", reasoningEffort: "low", maxRepairAttempts: 2 }, now: 1, isActive: async () => active,
+    });
+    expect(result.outcome).toBe("inactive");
+    expect(provider.generateStructured).toHaveBeenCalledTimes(1);
+    expect(store.putJson).not.toHaveBeenCalled(); expect(repo.markTerminal).not.toHaveBeenCalled(); expect(repo.markRecoverable).not.toHaveBeenCalled();
+  });
+  it("does not report complete when the final database transition loses", async () => {
+    const repo = repository(); repo.markTerminal.mockResolvedValue(false);
+    const result = await verifyNextQuestStage({
+      job: { id: "job", batchCursor: 4, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 },
+      game: game(), contracts: makeContracts(), provider: { generateStructured: vi.fn() }, repository: repo, store: { putJson: vi.fn() },
+      config: { model: "gpt-5.4-mini", reasoningEffort: "low", maxRepairAttempts: 2 }, now: 1,
+    });
+    expect(result.outcome).toBe("inactive");
+  });
   it("rejects an off-by-one repair without asking the model to approve invalid anchors", async () => {
     const original = game();
     const invalid = { ...original.quests[1], sourceAnchors: [{ label: "Wrong index", pageStart: 1, pageEnd: 1 }] };
@@ -89,7 +111,7 @@ describe("targeted quest verification", () => {
       job: { id: "job", batchCursor: 0, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 }, game: original, contracts: makeContracts(), provider, repository: repo,
       store: { putJson: vi.fn() }, config: { model: "gpt-5.4-mini", reasoningEffort: "low", maxRepairAttempts: 2 }, now: 1,
     })).resolves.toMatchObject({ outcome: "terminal", failedQuestIndex: 0 });
-    expect(repo.markTerminal).toHaveBeenCalledWith("job", "failed_terminal", "verification_failed", 1, 99);
+    expect(repo.markTerminal).toHaveBeenCalledWith("job", "failed_terminal", "verification_failed", 1, 99, "verifying_quests");
   });
 
   it("stores a package accepted by the existing game engine", async () => {

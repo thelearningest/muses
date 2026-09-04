@@ -191,6 +191,8 @@ export async function mapEvidenceBatch(input: {
         manual ? "manual_retry_required" : "failed_recoverable",
         manual ? "manual_retry_required" : "grounding_quality_insufficient",
         input.now,
+        "mapping_evidence",
+        input.job.batchCursor,
       );
       return { outcome: "interrupted", completedBatches: input.job.batchCursor, totalBatches: batches.length };
     }
@@ -204,6 +206,7 @@ export async function mapEvidenceBatch(input: {
     nextStatus: done ? "building_book_map" : "mapping_evidence",
     now: input.now,
     batchCursor: nextCursor,
+    expectedBatchCursor: input.job.batchCursor,
   });
   return {
     outcome: done ? "complete" : "advanced",

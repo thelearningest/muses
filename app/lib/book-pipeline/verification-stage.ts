@@ -7,6 +7,7 @@ import { OpenAiIndeterminateRequestError, type StructuredOutputProvider } from "
 import { QUEST_VERIFICATION_SCHEMA } from "./verification-schema";
 import { GAME_RENDERER_RULES } from "../../game-capabilities";
 import { MODEL_EVIDENCE_RULES, modelEvidenceContract } from "./model-contract";
+import { InactiveBookJobError, requireActiveJob } from "./lifecycle";
 
 type Verdict = { accepted: boolean; issues: string[] };
 type StorePort = { putJson(jobId: string, path: string, value: unknown, expiresAt: number): Promise<void> };
@@ -44,10 +45,11 @@ async function repairQuest(input: { quest: Quest; contract: QuestEvidenceContrac
   return parsed;
 }
 
-async function finish(input: { job: { id: string; originalFilename: string; expiresAt: number }; game: GameContent; store: StorePort; repository: Pick<BookJobRepository, "markTerminal">; now: number }) {
+async function finish(input: { job: { id: string; originalFilename: string; expiresAt: number }; game: GameContent; store: StorePort; repository: Pick<BookJobRepository, "markTerminal">; now: number; isActive?: () => Promise<boolean> }) {
+  await requireActiveJob(input.isActive);
   const game: GamePackage = { ...input.game, schemaVersion: 1, id: crypto.randomUUID(), sourceFilename: input.job.originalFilename, generatedAt: new Date(input.now * 1_000).toISOString() };
   await input.store.putJson(input.job.id, "game.json", game, input.job.expiresAt);
-  await input.repository.markTerminal(input.job.id, "complete", null, input.now, input.job.expiresAt);
+  if (await input.repository.markTerminal(input.job.id, "complete", null, input.now, input.job.expiresAt) === false) return { outcome: "inactive" as const };
   return { outcome: "complete" as const, game };
 }
 
@@ -60,12 +62,17 @@ export async function verifyNextQuestStage(input: {
   store: StorePort;
   config: { model: string; reasoningEffort: ReasoningEffort; maxRepairAttempts: number; reserveCostUnits?: number; maxCostUnits?: number };
   now: number;
+  isActive?: () => Promise<boolean>;
 }) {
-  if (input.job.batchCursor >= input.game.quests.length) return finish({ job: input.job, game: input.game, store: input.store, repository: input.repository, now: input.now });
+  if (input.isActive && !await input.isActive()) return { outcome: "inactive" as const };
+  if (input.job.batchCursor >= input.game.quests.length) {
+    try { return await finish(input); }
+    catch (error) { if (error instanceof InactiveBookJobError) return { outcome: "inactive" as const }; throw error; }
+  }
   const index = input.job.batchCursor;
   const contract = input.contracts[index];
   if (!contract) {
-    await input.repository.markTerminal(input.job.id, "failed_terminal", "verification_failed", input.now, input.job.expiresAt);
+    await input.repository.markTerminal(input.job.id, "failed_terminal", "verification_failed", input.now, input.job.expiresAt, "verifying_quests");
     return { outcome: "terminal" as const };
   }
   let reserved = false;
@@ -86,28 +93,33 @@ export async function verifyNextQuestStage(input: {
       now: input.now,
     };
     let verdict = await verifyQuest({ ...requestContext, quest, contract });
+    await requireActiveJob(input.isActive);
     let repairs = 0;
     while (!verdict.accepted && repairs < input.config.maxRepairAttempts) {
       quest = await repairQuest({ ...requestContext, quest, contract, issues: verdict.issues });
+      await requireActiveJob(input.isActive);
       const candidate = { ...game, quests: game.quests.map((existing, questIndex) => questIndex === index ? quest : existing) };
       const deterministicIssues = validateGameAgainstContracts(candidate, input.contracts);
       verdict = deterministicIssues.length ? { accepted: false, issues: deterministicIssues } : await verifyQuest({ ...requestContext, quest, contract });
+      await requireActiveJob(input.isActive);
       game = candidate;
       repairs += 1;
     }
     if (!verdict.accepted) {
-      await input.repository.markTerminal(input.job.id, "failed_terminal", "verification_failed", input.now, input.job.expiresAt);
+      await input.repository.markTerminal(input.job.id, "failed_terminal", "verification_failed", input.now, input.job.expiresAt, "verifying_quests");
       return { outcome: "terminal" as const, failedQuestIndex: index };
     }
     await input.store.putJson(input.job.id, "game-draft.json", { game, questContractIds: Object.fromEntries(game.quests.map((item, questIndex) => [item.id, input.contracts[questIndex]?.id])) }, input.job.expiresAt);
+    await requireActiveJob(input.isActive);
     await input.store.putJson(input.job.id, `verification/${index}.json`, { accepted: true, repairs }, input.job.expiresAt);
     const nextCursor = index + 1;
-    if (nextCursor >= game.quests.length) return finish({ job: input.job, game, store: input.store, repository: input.repository, now: input.now });
-    await input.repository.commitStage({ jobId: input.job.id, expectedStatus: "verifying_quests", nextStatus: "verifying_quests", now: input.now, batchCursor: nextCursor });
+    if (nextCursor >= game.quests.length) return await finish({ ...input, game });
+    if (await input.repository.commitStage({ jobId: input.job.id, expectedStatus: "verifying_quests", nextStatus: "verifying_quests", now: input.now, batchCursor: nextCursor, expectedBatchCursor: input.job.batchCursor }) === false) return { outcome: "inactive" as const };
     return { outcome: "advanced" as const, verifiedQuests: nextCursor, totalQuests: game.quests.length };
   } catch (error) {
+    if (error instanceof InactiveBookJobError) return { outcome: "inactive" as const };
     const manual = error instanceof OpenAiIndeterminateRequestError;
-    await input.repository.markRecoverable(input.job.id, "verifying_quests", manual ? "manual_retry_required" : "failed_recoverable", manual ? "manual_retry_required" : "provider_unavailable", input.now);
+    await input.repository.markRecoverable(input.job.id, "verifying_quests", manual ? "manual_retry_required" : "failed_recoverable", manual ? "manual_retry_required" : "provider_unavailable", input.now, "verifying_quests", input.job.batchCursor);
     return { outcome: "interrupted" as const };
   } finally {
     if (reserved && input.config.reserveCostUnits && input.repository.reconcileProviderCost) {

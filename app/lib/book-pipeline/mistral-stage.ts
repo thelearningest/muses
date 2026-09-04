@@ -57,6 +57,7 @@ async function markFailure(
     manual ? "manual_retry_required" : "failed_recoverable",
     category,
     now,
+    job.status === "uploaded" && resumeStage === "uploaded" ? "ocr_submitting" : resumeStage,
   );
   return {
     outcome: "interrupted",
@@ -107,6 +108,7 @@ export async function advanceOcrStage(input: {
         "global_capacity_reached",
         now,
         job.expiresAt,
+        "ocr_submitting",
       );
       return { outcome: "terminal", status: "failed_terminal" };
     }
@@ -173,6 +175,7 @@ export async function advanceOcrStage(input: {
           batch.status === "cancelled" ? null : "provider_rejected_source",
           now,
           job.expiresAt,
+          "ocr_queued",
         );
         await Promise.allSettled([
           ...(batch.errorFileId ? [provider.deleteFile(batch.errorFileId)] : []),
@@ -233,6 +236,7 @@ export async function advanceOcrStage(input: {
         "page_limit_exceeded",
         now,
         job.expiresAt,
+        "canonicalizing",
       );
       if (store.deleteJobArtifacts) await store.deleteJobArtifacts(job.id);
       return { outcome: "terminal", status: "failed_terminal" };
@@ -244,6 +248,7 @@ export async function advanceOcrStage(input: {
         "extraction_quality_insufficient",
         now,
         job.expiresAt,
+        "canonicalizing",
       );
       return { outcome: "terminal", status: "failed_terminal" };
     }

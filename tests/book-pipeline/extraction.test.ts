@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { canonicalizeExtractedPages, nativeTextUsable, parseExtractedPage, type PageRecord } from "../../app/lib/book-pipeline/extraction/page-extraction";
+import { canonicalizeExtractedPages, EXTRACTION_PROMPT_VERSION, PAGE_EXTRACTION_INSTRUCTIONS, nativeTextUsable, parseExtractedPage, type PageRecord } from "../../app/lib/book-pipeline/extraction/page-extraction";
 import { advanceExtraction, EXTRACTION_STATE_PATH, initialExtractionState, type ExtractionAsset, type ExtractionState } from "../../app/lib/book-pipeline/extraction/stage";
 import type { VisualStore } from "../../app/lib/book-pipeline/visual-agent/stage";
 import type { StructuredOutputProvider } from "../../app/lib/book-pipeline/providers/openai";
@@ -35,6 +35,38 @@ async function fixture() {
 }
 
 describe("provider-neutral page extraction", () => {
+  it("uses Sol only at final refinement and records model-specific spend and provenance", async () => {
+    const f = await fixture();
+    f.generate.mockResolvedValueOnce(response(page(0, "needs_refinement"))).mockResolvedValueOnce(response(page(0, "needs_refinement")));
+    for (let revision = 0; revision < 3; revision++) { await f.asset(revision); await advanceExtraction(f.input); }
+    const calls = f.generate.mock.calls as unknown as Array<[{ model: string }]>;
+    expect(calls.map(([request]) => request.model)).toEqual(["gpt-5.6-luna", "gpt-5.6-luna", "gpt-5.6-sol"]);
+    expect((await f.state())?.usage.estimatedMicros).toBe(2 * 85 + 1500);
+    expect(await f.store.getJson(f.job.id, "extraction/pages/0-2-0.json")).toMatchObject({ method: "sol", model: "gpt-5.6-sol", priceBasis: { inputUsdPerMillion: 4, outputUsdPerMillion: 20 } });
+  });
+  it("keeps legacy requests and final refinement Luna-only", async () => {
+    const f = await fixture(); const state = (await f.state())!;
+    state.version = 1; state.promptVersion = EXTRACTION_PROMPT_VERSION; delete state.fallback; state.revision = 2;
+    await f.store.putJson(f.job.id, EXTRACTION_STATE_PATH, state, f.job.expiresAt); await f.asset(2);
+    await advanceExtraction(f.input);
+    expect(f.generate).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-5.6-luna", instructions: PAGE_EXTRACTION_INSTRUCTIONS }));
+    expect((await f.state())?.usage.estimatedMicros).toBe(85);
+  });
+  it("admits the Sol request at Sol prices, not the cheaper default prices", async () => {
+    const f = await fixture(); const state = (await f.state())!; state.revision = 2; state.limits.maxMicros = 100000;
+    await f.store.putJson(f.job.id, EXTRACTION_STATE_PATH, state, f.job.expiresAt); await f.asset(2);
+    expect(await advanceExtraction(f.input)).toMatchObject({ reason: "budget_exhausted" });
+    expect(f.generate).not.toHaveBeenCalled();
+  });
+  it("omits refined text geometry but retains raw response and validates visual boxes", async () => {
+    const f = await fixture(); const state = (await f.state())!; state.revision = 2;
+    await f.store.putJson(f.job.id, EXTRACTION_STATE_PATH, state, f.job.expiresAt); await f.asset(2);
+    const box = { x: 0.9, y: 0, width: 0.5, height: 1 };
+    f.generate.mockResolvedValueOnce(response({ ...page(), blocks: [{ ...page().blocks[0], box }] }));
+    expect(await advanceExtraction(f.input)).toMatchObject({ completedPages: 1 });
+    expect(await f.store.getJson(f.job.id, "extraction/pages/0-2-0.json")).toMatchObject({ page: { blocks: [{ box: null }] } });
+    expect(await f.store.getJson(f.job.id, "extraction/calls/0-2-0.json")).toMatchObject({ response: { data: { blocks: [{ box }] } } });
+  });
   it("rejects wrong page indices, invalid caption relationships and missing coverage", () => {
     expect(() => parseExtractedPage(page(1), 0)).toThrow(/mismatch/);
     expect(() => parseExtractedPage({ ...page(), visuals: [{ kind: "figure", description: "Chart", box: { x: 0, y: 0, width: 1, height: 1 }, captionBlockIndexes: [0] }] }, 0)).toThrow(/caption/);
