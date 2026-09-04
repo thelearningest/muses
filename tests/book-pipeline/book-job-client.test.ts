@@ -57,6 +57,26 @@ describe("resumable book job client", () => {
     expect(advance).toHaveBeenCalledTimes(2);
     expect(prepareExtractionPage).toHaveBeenCalledOnce();
   });
+  it("reports only successfully uploaded page preparation", async () => {
+    const controller = new AbortController();
+    const onPreparationProgress = vi.fn();
+    const requests = [0, 1, 2].map((pageIndex) => ({ pageIndex, revision: 0, parts: 1 as const, allowNative: true, compact: true }));
+    const prepareExtractionPage = vi.fn(async (request: (typeof requests)[number]) => {
+      if (request.pageIndex === 2) controller.abort();
+    });
+    await driveBookJob({
+      job,
+      client: {
+        status: vi.fn(async () => ({ jobId: job.jobId, stage: "reading_source" as const, recoverable: false })),
+        advance: vi.fn(async () => ({ outcome: "awaiting_extraction_assets", requests, sourceFingerprint: "source" })),
+        acknowledge: vi.fn(),
+      },
+      signal: controller.signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(),
+      prepareExtractionPage, onPreparationProgress, sleep: vi.fn(async () => undefined),
+    });
+    expect(onPreparationProgress).toHaveBeenNthCalledWith(1, { completedPages: 0, totalPages: 3 });
+    expect(onPreparationProgress).toHaveBeenLastCalledWith({ completedPages: 3, totalPages: 3 });
+  });
   it("surfaces a terminal extraction failure instead of silently removing the job", async () => {
     const clear = vi.fn();
     await expect(driveBookJob({ job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "failed" as const, recoverable: false, error: { code: "extraction_quality_insufficient", message: "Cannot read PDF page 6." } })), advance: vi.fn(), acknowledge: vi.fn() }, signal: new AbortController().signal, onStatus: vi.fn(), saveGame: vi.fn(), clear, sleep: vi.fn() })).rejects.toThrow("Cannot read PDF page 6.");

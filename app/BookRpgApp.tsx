@@ -12,6 +12,7 @@ import {
   RESUMABLE_JOB_KEY,
   saveResumableJob,
   type BookJobStatusResponse,
+  type BookPreparationProgress,
   type ResumableBookJob,
 } from "./book-job-client";
 import { hasRequiredVisualQuests as hasPlayableVisuals, type GamePackage } from "./game-package";
@@ -95,8 +96,9 @@ function Turnstile({ onToken, siteKey }: { onToken(token: string): void; siteKey
   return <div className="turnstile-field" ref={container} aria-label="Human verification" />;
 }
 
-function JobProgress({ job, status, needsSourceFile, onSourceFile, onRetry, onCancel }: {
+function JobProgress({ job, status, preparation, needsSourceFile, onSourceFile, onRetry, onCancel }: {
   job: ResumableBookJob; status: BookJobStatusResponse | null; needsSourceFile: boolean;
+  preparation: BookPreparationProgress | null;
   onSourceFile(file: File): void; onRetry(): void; onCancel(): void;
 }) {
   const stage = status?.stage ?? job.stage;
@@ -105,9 +107,20 @@ function JobProgress({ job, status, needsSourceFile, onSourceFile, onRetry, onCa
   const current = PIPELINE_STAGES.findIndex((item) => item.stage === effectiveStage);
   const step = current < 0 ? -1 : current <= 1 ? 0 : current <= 6 ? 1 : current <= 8 ? 2 : 3;
   const steps = ["Upload", "Read your book", "Create quests", "Check answers"];
-  const percent = overallPipelineProgress(effectiveStage, status?.progress);
-  const units = pipelineUnitLabel(status?.progress);
-  const activity = PIPELINE_STAGES[current]?.label ?? "Preparing your book";
+  const serverCompleted = status?.progress?.unit === "pages" ? status.progress.completedUnits ?? 0 : 0;
+  const preparing = effectiveStage === "reading_source" && preparation && serverCompleted === 0;
+  const preparationRatio = preparing && preparation.totalPages > 0 ? Math.min(1, preparation.completedPages / preparation.totalPages) : 0;
+  const percent = preparing
+    ? 8 + Math.round(preparationRatio * 20)
+    : effectiveStage === "reading_source" && status?.progress?.unit === "pages" && status.progress.totalUnits
+      ? 28 + Math.round(Math.min(1, serverCompleted / status.progress.totalUnits) * 30)
+      : overallPipelineProgress(effectiveStage, status?.progress);
+  const units = preparing
+    ? `${preparation.completedPages} of ${preparation.totalPages} pages prepared`
+    : pipelineUnitLabel(status?.progress);
+  const activity = preparing
+    ? preparation.completedPages < preparation.totalPages ? "Preparing pages" : "Reading prepared pages"
+    : PIPELINE_STAGES[current]?.label ?? "Preparing your book";
   const progressLabel = interrupted ? `${activity} paused` : activity;
   return (
     <section className="job-progress" aria-live="polite" aria-labelledby="job-progress-title">
@@ -152,6 +165,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
   const [hydrated, setHydrated] = useState(false);
   const [activeJob, setActiveJob] = useState<ResumableBookJob | null>(null);
   const [jobStatus, setJobStatus] = useState<BookJobStatusResponse | null>(null);
+  const [preparationProgress, setPreparationProgress] = useState<BookPreparationProgress | null>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [driveVersion, setDriveVersion] = useState(0);
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
@@ -176,6 +190,17 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     const job = activeJob;
     if (!hydrated || !job || job.stage === "uploading") return;
     const controller = new AbortController();
+    let statusRequestActive = false;
+    const applyStatus = (status: BookJobStatusResponse) => {
+      if (controller.signal.aborted) return;
+      setJobStatus(status);
+      saveResumableJob(window.localStorage, { ...job, stage: status.stage });
+    };
+    const statusPoll = window.setInterval(() => {
+      if (statusRequestActive || controller.signal.aborted) return;
+      statusRequestActive = true;
+      void clientRef.current.status(job).then(applyStatus).catch(() => undefined).finally(() => { statusRequestActive = false; });
+    }, 1_500);
     let rendererPromise: Promise<Awaited<ReturnType<typeof import("./visual-page-renderer").createVisualPageRenderer>>> | undefined;
     const rendererFor = async (fingerprint: string) => {
       if (!sourceFile.current) throw new Error("Select the same PDF below to continue processing it.");
@@ -200,6 +225,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
         const asset = await renderer.prepareExtraction(request, fingerprint);
         if (!controller.signal.aborted) await clientRef.current.uploadExtractionAsset(job, asset);
       },
+      onPreparationProgress: setPreparationProgress,
       renderAssets: async (requests, fingerprint) => {
         const renderer = await rendererFor(fingerprint);
         for (const request of requests) {
@@ -209,10 +235,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
           await clientRef.current.uploadVisualAsset(job, asset);
         }
       },
-      onStatus: (status) => {
-        setJobStatus(status);
-        saveResumableJob(window.localStorage, { ...job, stage: status.stage });
-      },
+      onStatus: applyStatus,
       saveGame: async (game) => {
         await saveLibraryGame(game);
         setGames((current) => {
@@ -225,10 +248,11 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
         window.localStorage.removeItem(RESUMABLE_JOB_KEY);
         setActiveJob(null);
         setJobStatus(null);
+        setPreparationProgress(null);
       },
     }).catch((jobError) => { if (!controller.signal.aborted) setError(messageFor(jobError)); })
-      .finally(async () => { const renderer = await rendererPromise?.catch(() => undefined); await renderer?.destroy(); });
-    return () => controller.abort();
+      .finally(async () => { window.clearInterval(statusPoll); const renderer = await rendererPromise?.catch(() => undefined); await renderer?.destroy(); });
+    return () => { window.clearInterval(statusPoll); controller.abort(); };
   }, [hydrated, activeJob, driveVersion]);
 
   const removeGame = async (id: string) => {
@@ -244,6 +268,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     if (!turnstileToken) { setError("Complete the verification challenge first."); return; }
     setIsStarting(true);
     setError("");
+    setPreparationProgress(null);
     let created: ResumableBookJob | null = null;
     try {
       created = await clientRef.current.create({ file, rightsConfirmed: true, browserToken: createBrowserIdentity(window.localStorage), turnstileToken });
@@ -270,7 +295,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
         job: activeJob,
         cancel: (job) => clientRef.current.cancel(job),
         storage: window.localStorage,
-        clear: () => { setActiveJob(null); setJobStatus(null); },
+        clear: () => { setActiveJob(null); setJobStatus(null); setPreparationProgress(null); },
       });
     } catch (cancelError) { setError(`${messageFor(cancelError)} Temporary cleanup will be retried automatically.`); }
   };
@@ -298,7 +323,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
       <div className="library-grid">
         <section className="upload-panel" aria-labelledby="upload-title">
           <h2 id="upload-title">{activeJob ? "Your game is on its way" : "Start with a PDF"}</h2>
-          {activeJob ? <JobProgress job={activeJob} status={jobStatus} needsSourceFile={!sourceFile.current}
+          {activeJob ? <JobProgress job={activeJob} status={jobStatus} preparation={preparationProgress} needsSourceFile={!sourceFile.current}
             onSourceFile={(file) => { sourceFile.current = file; setError(""); setDriveVersion((value) => value + 1); }}
             onRetry={() => void retryJob()} onCancel={() => void cancelJob()} /> : (
             <>

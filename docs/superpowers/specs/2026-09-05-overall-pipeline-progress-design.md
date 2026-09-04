@@ -32,9 +32,11 @@ Progress is monotonic and derived from pipeline state rather than time. Each sta
 | Checking answers | 94–99% |
 | Ready | 100% |
 
-Within page reading, the existing completed-page and total-page values interpolate through the 8–58% range. Within answer checking, verified-quest and total-quest values interpolate through the 94–99% range when available. Other stages advance only when the server confirms a stage transition; the interface does not animate or estimate unseen work within them.
+Within page reading, real browser preparation occupies 8–28% and model-completed pages occupy 28–58%. The browser reports a page only after its extraction packet has been uploaded successfully; this is measured work, not a timer. Once every packet is ready, the label changes from `Preparing pages` to `Reading prepared pages` until the first model batch completes. Within answer checking, verified-quest and total-quest values interpolate through the 94–99% range when available. Other stages advance only when the server confirms a stage transition; the interface does not animate or estimate unseen work within them.
 
-The label makes this distinction understandable: measurable phases show values such as `144 of 210 pages`; milestone-only phases show the current activity without inventing a count.
+The client performs a lightweight read-only status check while a long model request is in flight. This lets completed extraction batches reach the progress bar without starting another model request or waiting for the entire book-wide wave to return.
+
+The label makes this distinction understandable: preparation shows values such as `144 of 210 pages prepared`, model extraction shows `144 of 210 pages read`, and milestone-only phases show the current activity without inventing a count.
 
 ## Recovery behavior
 
@@ -53,4 +55,3 @@ The native progress element receives an accessible label containing the current 
 - Run the focused progress/extraction tests and the production build.
 - Verify the mapping at upload, partial page reading, each milestone-only stage, partial answer checking, interruption, and ready.
 - Inspect desktop and narrow layouts for wrapping and horizontal overflow.
-

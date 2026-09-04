@@ -27,6 +27,8 @@ export type BookJobStatusResponse = {
   game?: unknown;
 };
 
+export type BookPreparationProgress = { completedPages: number; totalPages: number };
+
 export class BookJobClientError extends Error {
   constructor(readonly code: string, message: string, readonly status: number) {
     super(message);
@@ -156,6 +158,7 @@ export async function driveBookJob(input: {
   renderAssets?(requests: RenderRequest[], sourceFingerprint: string): Promise<void>;
   prepareExtractionManifest?(sourceFingerprint: string, maxPages: number): Promise<void>;
   prepareExtractionPage?(request: ExtractionPageRequest, sourceFingerprint: string): Promise<void>;
+  onPreparationProgress?(progress: BookPreparationProgress): void;
 }): Promise<"complete" | "paused" | "cleared" | "aborted"> {
   const now = input.now ?? Date.now;
   const sleep = input.sleep ?? ((milliseconds, signal) => new Promise<void>((resolve) => {
@@ -169,6 +172,7 @@ export async function driveBookJob(input: {
   let preparationError: unknown;
   let connectionRecoveries = 0;
   const prepared = new Set<string>();
+  let preparationTotal = 0;
   try {
   while (!input.signal.aborted) {
     if (preparationError) throw preparationError;
@@ -231,12 +235,15 @@ export async function driveBookJob(input: {
         } else if (!preparation) {
           const key = (request: ExtractionPageRequest) => `${request.pageIndex}:${request.revision}`;
           const remaining = requests.filter((request) => !prepared.has(key(request)));
+          preparationTotal = Math.max(preparationTotal, prepared.size + remaining.length);
+          input.onPreparationProgress?.({ completedPages: prepared.size, totalPages: preparationTotal });
           // Keep enough uploads in flight to hide hosted R2/database latency.
           // Each compact page is bounded to 192 KiB; eight remain modest for a browser.
           if (remaining.length) preparation = mapConcurrent(remaining, 8, async (request) => {
             if (input.signal.aborted) return;
             await input.prepareExtractionPage!(request, advanced.sourceFingerprint!);
             prepared.add(key(request));
+            input.onPreparationProgress?.({ completedPages: prepared.size, totalPages: preparationTotal });
           }).then(() => { preparation = undefined; }, (error) => { preparationError = error; preparation = undefined; });
         }
       }
