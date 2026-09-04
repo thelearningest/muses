@@ -335,6 +335,42 @@ button:disabled {
   margin: 0.75rem 0;
 }
 
+.reading-progress {
+  margin: 1.25rem 0 1.5rem;
+}
+
+.reading-progress-copy {
+  align-items: baseline;
+  color: var(--yellow);
+  display: flex;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  gap: 1rem;
+  justify-content: space-between;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.6rem;
+  text-transform: uppercase;
+}
+
+.reading-progress-copy strong {
+  color: var(--white);
+  font-weight: 400;
+  text-align: right;
+}
+
+.reading-progress progress {
+  appearance: none;
+  background: #45443f;
+  border: 0;
+  display: block;
+  height: 0.7rem;
+  width: 100%;
+}
+
+.reading-progress progress::-webkit-progress-bar { background: #45443f; }
+.reading-progress progress::-webkit-progress-value { background: var(--yellow); }
+.reading-progress progress::-moz-progress-bar { background: var(--yellow); }
+
 .job-actions {
   align-items: center;
   display: flex;

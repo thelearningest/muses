@@ -20,6 +20,7 @@ export type ResumableBookJob = {
 export type BookJobStatusResponse = {
   jobId: string;
   stage: PublicBookJobStage;
+  resumeStage?: PublicBookJobStage;
   recoverable: boolean;
   progress?: { completedUnits?: number; totalUnits?: number };
   error?: { code: string; message: string } | null;

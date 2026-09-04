@@ -96,10 +96,26 @@ function Turnstile({ onToken, siteKey }: { onToken(token: string): void; siteKey
 
 function JobProgress({ job, status, onRetry, onCancel }: { job: ResumableBookJob; status: BookJobStatusResponse | null; onRetry(): void; onCancel(): void }) {
   const stage = status?.stage ?? job.stage;
-  const current = PIPELINE_STAGES.findIndex((item) => item.stage === stage);
   const interrupted = stage === "interrupted";
+  const effectiveStage = interrupted ? status?.resumeStage : stage;
+  const current = PIPELINE_STAGES.findIndex((item) => item.stage === effectiveStage);
   const step = current < 0 ? -1 : current <= 1 ? 0 : current <= 6 ? 1 : current <= 8 ? 2 : 3;
   const steps = ["Upload", "Read your book", "Create quests", "Check answers"];
+  const totalPages = status?.progress?.totalUnits;
+  const reportedPages = status?.progress?.completedUnits ?? 0;
+  const readingComplete = current >= 4;
+  const showReadingProgress = step === 1 && (current >= 2 || interrupted);
+  const completedPages = totalPages
+    ? Math.min(totalPages, Math.max(0, readingComplete ? totalPages : reportedPages))
+    : 0;
+  const percent = totalPages ? Math.round((completedPages / totalPages) * 100) : 0;
+  const progressLabel = interrupted
+    ? "Reading paused"
+    : readingComplete
+      ? PIPELINE_STAGES[current]?.label ?? "Pages read"
+      : totalPages
+        ? "Reading pages"
+        : "Preparing pages";
   return (
     <section className="job-progress" aria-live="polite" aria-labelledby="job-progress-title">
       <div className="job-progress-heading">
@@ -113,7 +129,15 @@ function JobProgress({ job, status, onRetry, onCancel }: { job: ResumableBookJob
           </li>
         ))}
       </ol>
-      {stage === "reading_source" && !!status?.progress?.totalUnits && <p className="job-counter">Reading {status.progress.totalUnits} pages</p>}
+      {showReadingProgress && (
+        <div className="reading-progress">
+          <div className="reading-progress-copy">
+            <span>{progressLabel}</span>
+            {totalPages ? <strong>{completedPages} of {totalPages} pages · {percent}%</strong> : <strong>Starting…</strong>}
+          </div>
+          <progress aria-label={totalPages ? `${completedPages} of ${totalPages} pages read` : "Preparing pages"} max={totalPages ?? 1} value={completedPages} />
+        </div>
+      )}
       <p className="generation-note">Keep this tab open while we prepare your game. This can take a few minutes.</p>
       {interrupted && <p className="job-interruption">Your completed steps are saved. Try again to continue from here.</p>}
       <div className="job-actions">

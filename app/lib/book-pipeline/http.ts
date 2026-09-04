@@ -375,6 +375,7 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
         return json({
           jobId,
           stage: publicStageFor(job.status),
+          ...(job.resumeStage ? { resumeStage: publicStageFor(job.resumeStage) } : {}),
           recoverable:
             job.status === "failed_recoverable" || job.status === "manual_retry_required",
           progress: extraction ? { completedUnits: extraction.cursor, totalUnits: extraction.pageCount } : { completedUnits: job.batchCursor },

@@ -46,7 +46,9 @@ export function validateBatchOutput(value: unknown, expectedPages: number[]): Ba
   const byPage = new Map(output.pages.map((page) => [page.pageIndex, page]));
   if (byPage.size !== expectedPages.length || output.pages.length !== expectedPages.length || expectedPages.some((index) => !byPage.has(index))) throw new Error("Incomplete batch coverage");
   for (const page of output.pages) {
-    if (page.role === "unreadable" || (page.role === "lesson" && (!page.excerpt.trim() || !page.claim.trim() || !page.concept.trim()))) throw new Error("Core evidence is unreadable");
+    // An unreadable page is a valid, explicit abstention. Rejecting it here
+    // contradicts the extraction prompt and can strand an otherwise sound book.
+    if (page.role === "lesson" && (!page.excerpt.trim() || !page.claim.trim() || !page.concept.trim())) throw new Error("Core evidence is unreadable");
     if (page.visual && !validBox(page.visual.box)) throw new Error("Visual outside source page");
     if (["blank", "decorative"].includes(page.role) && page.excerpt) throw new Error("Invalid non-text page");
   }

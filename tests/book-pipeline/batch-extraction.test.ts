@@ -11,10 +11,11 @@ import { ConditionalR2 } from "./durable-fixture";
 const page = (pageIndex: number) => ({ pageIndex, role: "lesson", concept: `Concept ${pageIndex}`, excerpt: `Evidence for concept ${pageIndex}.`,
   claim: `Evidence for concept ${pageIndex}.`, action: "compare", example: "", pitfall: "", prerequisites: [], visual: null, uncertainty: "Selected excerpt only." });
 
-it("rejects missing, duplicate and unreadable page evidence", () => {
+it("rejects missing, duplicate and malformed lesson evidence while accepting explicit abstention", () => {
   expect(() => validateBatchOutput({ bookTitle: null, pages: [page(0)] }, [0, 1])).toThrow();
   expect(() => validateBatchOutput({ bookTitle: null, pages: [page(0), page(0)] }, [0, 1])).toThrow();
-  expect(() => validateBatchOutput({ bookTitle: null, pages: [{ ...page(0), role: "unreadable" }] }, [0])).toThrow();
+  expect(() => validateBatchOutput({ bookTitle: null, pages: [{ ...page(0), role: "lesson", excerpt: "" }] }, [0])).toThrow();
+  expect(validateBatchOutput({ bookTitle: null, pages: [{ ...page(0), role: "unreadable", concept: "", excerpt: "", claim: "" }] }, [0]).pages[0].role).toBe("unreadable");
   expect(validateBatchOutput({ bookTitle: null, pages: [page(1), page(0)] }, [0, 1]).pages.map((p) => p.pageIndex)).toEqual([0, 1]);
 });
 
