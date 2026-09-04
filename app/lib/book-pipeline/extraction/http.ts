@@ -18,7 +18,7 @@ export function lunaLimits(env: Record<string, unknown>, prefix: "BOOK_EXTRACTIO
     if (!Number.isFinite(n) || n <= 0) throw new Error("Invalid provider budget configuration");
     return n;
   };
-  return { maxMicros: Math.ceil(positive(`${prefix}_MAX_USD`, prefix === "BOOK_EXTRACTION" ? 5 : 0.5) * 1_000_000), inputUsdPerMillion: positive(`${prefix}_INPUT_USD_PER_MILLION`, 0.2), outputUsdPerMillion: positive(`${prefix}_OUTPUT_USD_PER_MILLION`, 1.2) };
+  return { maxMicros: Math.ceil(positive(`${prefix}_MAX_USD`, prefix === "BOOK_EXTRACTION" ? 15 : 0.5) * 1_000_000), inputUsdPerMillion: positive(`${prefix}_INPUT_USD_PER_MILLION`, 0.2), outputUsdPerMillion: positive(`${prefix}_OUTPUT_USD_PER_MILLION`, 1.2) };
 }
 
 class Rejected extends Error { constructor(readonly code: string, readonly status: number) { super(code); } }
