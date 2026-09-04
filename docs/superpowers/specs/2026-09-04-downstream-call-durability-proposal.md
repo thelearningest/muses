@@ -1,6 +1,6 @@
 # Downstream paid-call durability
 
-Status: proposed, not implemented. This closes the four reproduced downstream concurrency gaps; it does not change extraction accuracy or model choice.
+Status: approved by the user on 2026-09-04; implemented and locally verified. See `../../evaluation/2026-09-04-durable-downstream-implementation.md`. This closes the four reproduced downstream concurrency gaps at the actual HTTP route boundary; it does not change extraction accuracy or establish production acceptance.
 
 ## Recommended approach
 
@@ -21,4 +21,4 @@ An R2-only journal can reuse conditional object writes but still needs idempoten
 
 First make all four existing failing concurrency checks pass and enable them in the ordinary suite. Add SQLite-backed operation-claim/accounting tests, immutable artifact replay after crashes, old-attempt late arrivals, changed request hashes, explicit unknown retries, cancellation/expiry, and quota exhaustion. Test the route integration with local D1/R2. Do not use a mocked result as full-book or production acceptance.
 
-The extraction-accuracy comparison remains a separate pending proposal. Both gates must be resolved before full end-to-end production acceptance; implementing only this proposal is not goal completion.
+The separately approved extraction-accuracy comparison is complete, but neither candidate passes every sampled page. Its proposed targeted-recovery follow-up remains unapproved. Both gates must be resolved before full end-to-end production acceptance; implementing only durability is not goal completion.

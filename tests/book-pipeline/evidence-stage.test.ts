@@ -44,17 +44,7 @@ const card: EvidenceCard = {
 };
 
 describe("OpenAI evidence mapping", () => {
-  it.skipIf(process.env.RUN_PAID_CONCURRENCY_AUDIT !== "1")("known duplicate-paid gap: simultaneous evidence mapping", async () => {
-    const generate = vi.fn(async () => ({ responseId: "resp", data: { cards: [card] }, usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 } }));
-    const input: Parameters<typeof mapEvidenceBatch>[0] = {
-      job: { id: "job", status: "mapping_evidence", batchCursor: 0, identityHash: "identity", expiresAt: 99 }, canonical,
-      provider: { generateStructured: generate } as unknown as StructuredOutputProvider,
-      repository: { commitStage: vi.fn(), markRecoverable: vi.fn(), appendOpenAiRequestId: vi.fn(), reserveProviderCost: vi.fn().mockResolvedValue(true), reconcileProviderCost: vi.fn() },
-      store: { getJson: async () => null, putJson: vi.fn() }, config: { model: "gpt-5.4-mini", reasoningEffort: "low", sectionsPerBatch: 3, reserveCostUnits: 100, maxCostUnits: 1000 }, now: 1,
-    };
-    await Promise.all([mapEvidenceBatch(input), mapEvidenceBatch(input)]);
-    expect(generate).toHaveBeenCalledTimes(1);
-  });
+  // Simultaneous paid-call acceptance lives in advance-durability-route.test.ts.
   it("retains the paid reservation when usage persistence fails", async () => {
     const repository = { commitStage: vi.fn(), markRecoverable: vi.fn(), appendOpenAiRequestId: vi.fn(), reserveProviderCost: vi.fn().mockResolvedValue(true), reconcileProviderCost: vi.fn().mockRejectedValueOnce(new Error("Database unavailable")) };
     const provider = { generateStructured: vi.fn(async () => ({ responseId: "resp", data: { cards: [card] }, usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 } })) } as unknown as StructuredOutputProvider;

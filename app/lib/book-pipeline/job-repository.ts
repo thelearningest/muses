@@ -321,7 +321,8 @@ export class BookJobRepository {
       .prepare(`
         UPDATE book_jobs
         SET reserved_cost_units = reserved_cost_units + ?, updated_at = ?
-        WHERE id = ? AND reserved_cost_units + actual_cost_units + ? <= ?
+        WHERE id = ? AND reserved_cost_units + actual_cost_units + ?
+          + COALESCE((SELECT SUM(c.reserved_units + c.actual_units) FROM book_provider_calls c WHERE c.job_id = book_jobs.id), 0) <= ?
           AND cancellation_requested = 0 AND expires_at > ?
           AND status NOT IN ('cancelled', 'complete', 'acknowledged', 'failed_terminal', 'cleaning', 'cleaned', 'failed_recoverable', 'manual_retry_required')
       `)

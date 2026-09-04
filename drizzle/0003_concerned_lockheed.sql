@@ -1,0 +1,1 @@
+ALTER TABLE `book_provider_calls` ADD `visual_budget` text DEFAULT '{}' NOT NULL;

@@ -24,7 +24,10 @@ function expiryMetadata(expiresAt: number): Record<string, string> {
 }
 
 export class BookArtifactStore {
-  constructor(private readonly bucket: R2BucketBinding) {}
+  constructor(private readonly bucket: R2BucketBinding, private readonly references?: {
+    artifactPath(jobId: string, path: string): Promise<string | null>;
+    cleanup(jobId: string): Promise<void>;
+  }) {}
 
   async getJsonVersion<T>(jobId: string, path: string): Promise<{ value: T; etag: string } | null> {
     const object = await this.bucket.get(artifactKey(jobId, path));
@@ -83,13 +86,15 @@ export class BookArtifactStore {
   }
 
   async getJson<T>(jobId: string, relativePath: string): Promise<T | null> {
-    const object = await this.bucket.get(artifactKey(jobId, relativePath));
+    const resolved = await this.references?.artifactPath(jobId,relativePath);
+    const object = await this.bucket.get(artifactKey(jobId, resolved ?? relativePath));
     if (!object) return null;
     return JSON.parse(await object.text()) as T;
   }
 
   async get(jobId: string, relativePath: string) {
-    return this.bucket.get(artifactKey(jobId, relativePath));
+    const resolved = await this.references?.artifactPath(jobId,relativePath);
+    return this.bucket.get(artifactKey(jobId, resolved ?? relativePath));
   }
 
   async exists(jobId: string, relativePath: string): Promise<boolean> {
@@ -107,10 +112,10 @@ export class BookArtifactStore {
     while (true) {
       const page = await this.bucket.list({ prefix, limit: 1_000 });
       const keys = page.objects.map((object) => object.key);
-      if (keys.length === 0) return deleted;
+      if (keys.length === 0) { await this.references?.cleanup(jobId); return deleted; }
       await this.bucket.delete(keys);
       deleted += keys.length;
-      if (!page.truncated) return deleted;
+      if (!page.truncated) { await this.references?.cleanup(jobId); return deleted; }
     }
   }
 

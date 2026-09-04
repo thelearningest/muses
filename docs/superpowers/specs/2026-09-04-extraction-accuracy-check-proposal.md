@@ -1,6 +1,6 @@
 # Independent extraction accuracy check
 
-Status: proposed, not implemented. Selective fallback is already approved and implemented; this is a separate decision gate discovered in its fresh website test.
+Status: approved by the user on 2026-09-04, including the bounded comparison and implementation of the better-performing approach. Comparison completed for $0.485861; Sol-only performed better, but neither candidate meets complete-page acceptance on all samples. No production extraction default was changed. See `../../evaluation/2026-09-04-extraction-accuracy-comparison.md` and the proposed targeted-recovery acceptance-contract extension.
 
 ## Evidence
 

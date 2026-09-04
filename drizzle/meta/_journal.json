@@ -15,6 +15,20 @@
       "when": 1788445861017,
       "tag": "0001_noisy_cammi",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788534626876,
+      "tag": "0002_left_caretaker",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788535029416,
+      "tag": "0003_concerned_lockheed",
+      "breakpoints": true
     }
   ]
 }

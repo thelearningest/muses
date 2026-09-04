@@ -33,18 +33,7 @@ function response<T>(data: T) {
 }
 
 describe("targeted quest verification", () => {
-  it.skipIf(process.env.RUN_PAID_CONCURRENCY_AUDIT !== "1")("known duplicate-paid gap: simultaneous nonvisual verification", async () => {
-    const generate = vi.fn(async () => response({ accepted: true, issues: [] }));
-    let committed = false;
-    const repo = repository(); repo.commitStage.mockImplementation(async () => { if (committed) return false; committed = true; return true; });
-    const input: Parameters<typeof verifyNextQuestStage>[0] = {
-      job: { id: "job", batchCursor: 0, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 }, game: game(), contracts: makeContracts(),
-      provider: { generateStructured: generate } as unknown as StructuredOutputProvider, repository: repo, store: { putJson: vi.fn() },
-      config: { model: "gpt-5.4-mini", reasoningEffort: "low", maxRepairAttempts: 2 }, now: 1, isActive: async () => !committed,
-    };
-    await Promise.all([verifyNextQuestStage(input), verifyNextQuestStage(input)]);
-    expect(generate).toHaveBeenCalledTimes(1);
-  });
+  // Simultaneous paid-call acceptance lives in advance-durability-route.test.ts.
   it("does not repair or publish when cancelled during verification", async () => {
     let active = true;
     const provider = { generateStructured: vi.fn(async () => { active = false; return response({ accepted: false, issues: ["repair needed"] }); }) } as unknown as StructuredOutputProvider;

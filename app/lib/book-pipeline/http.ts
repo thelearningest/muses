@@ -1,4 +1,5 @@
 import { BookArtifactStore } from "./artifact-store";
+import { BookOperationRepository } from "./operation-repository";
 import {
   DEFAULT_BOOK_PIPELINE_CONFIG,
   parseBookPipelineConfig,
@@ -476,7 +477,7 @@ export async function createRuntimeBookJobApi() {
   return createBookJobApi({
     config: parseBookPipelineConfig(stringEnv) ?? DEFAULT_BOOK_PIPELINE_CONFIG,
     repository: new D1BookJobRepository(env.DB),
-    store: new BookArtifactStore(env.BOOK_JOBS),
+    store: new BookArtifactStore(env.BOOK_JOBS,new BookOperationRepository(env.DB)),
     capabilityHmacKey: requireSecret(env.BOOK_CAPABILITY_HMAC_KEY, "BOOK_CAPABILITY_HMAC_KEY"),
     identityHmacKey: requireSecret(env.BOOK_IDENTITY_HMAC_KEY, "BOOK_IDENTITY_HMAC_KEY"),
     providerUrlHmacKey: requireSecret(env.BOOK_PROVIDER_URL_HMAC_KEY, "BOOK_PROVIDER_URL_HMAC_KEY"),

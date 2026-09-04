@@ -23,6 +23,9 @@ import { runVisualStage } from "@/app/lib/book-pipeline/visual-agent/stage";
 import { questVisualImages, VisualQuestProvider } from "@/app/lib/book-pipeline/visual-agent/quest-provider";
 import { advanceExtraction } from "@/app/lib/book-pipeline/extraction/stage";
 import { lunaLimits } from "@/app/lib/book-pipeline/extraction/http";
+import { BookOperationRepository } from "@/app/lib/book-pipeline/operation-repository";
+import { durableStage } from "@/app/lib/book-pipeline/durable-stage";
+import { operationHash } from "@/app/lib/book-pipeline/paid-call-journal";
 
 type Context = { params: Promise<{ jobId: string }> };
 
@@ -42,6 +45,7 @@ async function loadEvidence(store: BookArtifactStore, jobId: string): Promise<Ev
 }
 
 export async function POST(request: Request, context: Context) {
+  let durable: ReturnType<typeof durableStage> | undefined;
   try {
     assertSameOrigin(request);
     const { jobId } = await context.params;
@@ -81,11 +85,25 @@ export async function POST(request: Request, context: Context) {
       Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
     );
     const config = parseBookPipelineConfig(stringEnv);
-    const store = new BookArtifactStore(env.BOOK_JOBS);
+    const operations = new BookOperationRepository(env.DB);
+    let store = new BookArtifactStore(env.BOOK_JOBS,operations);
     if (job.cancellationRequested || ["cancelled", "failed_terminal", "complete", "acknowledged", "cleaned"].includes(job.status)) return Response.json({ outcome: "inactive" });
+    if (["mapping_evidence", "building_book_map", "retrieving_quest_evidence", "generating_game", "verifying_quests"].includes(job.status)) {
+      const owner = await operations.acquire({ jobId: job.id, stage: job.status, cursor: job.batchCursor, retryConfirmed,
+        policyHash: await operationHash({ version: "downstream-durable-v1", source: job.sourceFingerprint, config, visualLimits: lunaLimits(env,"BOOK_VISUAL") }) });
+      if (!owner) {
+        const run = await operations.state(`${job.id}:${job.status}:${job.batchCursor}`);
+        const waiting = run?.state === "running" && run.lease_until > Math.floor(Date.now()/1000);
+        if (!waiting) await operations.suspendExpired(`${job.id}:${job.status}:${job.batchCursor}`);
+        return Response.json(waiting ? { outcome: "waiting" } : { error: { code: "manual_retry_required", message: "The previous operation stopped before its outcome was confirmed. Retry explicitly; it may already have been charged." } },{ status: waiting ? 202 : 409 });
+      }
+      durable = durableStage(operations,owner,store,repository,{ reserveUnits: job.status === "generating_game" ? Math.max(config.mapCostReserveUnits,4000) : config.mapCostReserveUnits, ceiling: config.maxProviderCostUnitsPerJob, retryConfirmed });
+      store = durable.store;
+    }
     const ingestion = await store.getJson<{ provider: string }>(job.id, "ingestion.json");
     const stageJob = job;
     const isStageActive = async () => {
+      if (durable) return durable.isActive();
       const latest = await repository.getAuthorizedJob(stageJob.id, capabilityHash);
       return !!latest && latest.status === stageJob.status && latest.batchCursor === stageJob.batchCursor && !latest.cancellationRequested && latest.expiresAt > Date.now() / 1000;
     };
@@ -120,8 +138,8 @@ export async function POST(request: Request, context: Context) {
           expiresAt: job.expiresAt,
         },
         canonical,
-        provider: new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")),
-        repository,
+        provider: durable!.journal.structured(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY"))),
+        repository: durable!.repository,
         store,
         config: {
           model: config.mapModel,
@@ -140,7 +158,7 @@ export async function POST(request: Request, context: Context) {
     if (job.status === "building_book_map") {
       const canonical = await store.getJson<CanonicalBook>(job.id, "canonical-book.json");
       if (!canonical) return Response.json({ error: { code: "canonical_book_missing" } }, { status: 409 });
-      const result = await buildBookMapStage({ job, canonical, repository, store, now });
+      const result = await buildBookMapStage({ job, canonical, repository: durable!.repository, store, now });
       return Response.json(result, { status: result.outcome === "interrupted" ? 409 : 200, headers: { "cache-control": "no-store" } });
     }
     if (job.status === "annotating_visuals") {
@@ -184,8 +202,8 @@ export async function POST(request: Request, context: Context) {
         canonical,
         bookMap,
         visualAnnotations: visualArtifact.annotations,
-        provider: new OpenAiEmbeddingsProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")),
-        repository,
+        provider: durable!.journal.embeddings(new OpenAiEmbeddingsProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY"))),
+        repository: durable!.repository,
         store,
         model: config.embeddingModel,
         reserveCostUnits: config.mapCostReserveUnits,
@@ -206,8 +224,8 @@ export async function POST(request: Request, context: Context) {
         bookMap,
         contracts: evidence.contracts,
         images: await questVisualImages(store, job.id, evidence.contracts),
-        provider: new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")),
-        repository,
+        provider: durable!.journal.structured(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY"))),
+        repository: durable!.repository,
         store,
         config: {
           model: config.generationModel,
@@ -230,9 +248,9 @@ export async function POST(request: Request, context: Context) {
         isActive: isStageActive,
         game: draft.game,
         contracts: evidence.contracts,
-        provider: new VisualQuestProvider(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")), store, job,
-          { model: "gpt-5.6-luna", plannedQuests: 0, ...lunaLimits(env, "BOOK_VISUAL") }),
-        repository,
+        provider: new VisualQuestProvider(durable!.journal.structured(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY"))), store, job,
+          { model: "gpt-5.6-luna", plannedQuests: 0, ...lunaLimits(env, "BOOK_VISUAL") }, true),
+        repository: durable!.repository,
         store,
         config: {
           model: config.verificationModel,
@@ -272,5 +290,5 @@ export async function POST(request: Request, context: Context) {
       { error: { code: "advance_failed", message: "The job could not advance safely." } },
       { status: 500 },
     );
-  }
+  } finally { await durable?.release(); }
 }

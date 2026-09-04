@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const bookJobs = sqliteTable(
   "book_jobs",
@@ -69,3 +69,41 @@ export const bookDailyBudget = sqliteTable("book_daily_budget", {
   actualCostUnits: integer("actual_cost_units").notNull().default(0),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const bookStageRuns = sqliteTable("book_stage_runs", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull(),
+  stage: text("stage").notNull(),
+  cursor: integer("cursor").notNull(),
+  policyHash: text("policy_hash").notNull(),
+  owner: text("owner").notNull(),
+  leaseUntil: integer("lease_until").notNull(),
+  state: text("state").notNull().default("running"),
+  expiresAt: integer("expires_at").notNull(),
+}, (t) => [uniqueIndex("idx_book_stage_identity").on(t.jobId, t.stage, t.cursor)]);
+
+export const bookProviderCalls = sqliteTable("book_provider_calls", {
+  id: text("id").primaryKey(),
+  runId: text("run_id").notNull(),
+  jobId: text("job_id").notNull(),
+  slot: integer("slot").notNull(),
+  attempt: integer("attempt").notNull(),
+  requestHash: text("request_hash").notNull(),
+  state: text("state").notNull(),
+  reservedUnits: integer("reserved_units").notNull(),
+  actualUnits: integer("actual_units").notNull().default(0),
+  visualBudget: text("visual_budget").notNull().default("{}"),
+  resultPath: text("result_path").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, (t) => [uniqueIndex("idx_book_call_identity").on(t.runId, t.slot, t.attempt), index("idx_book_call_budget").on(t.jobId)]);
+
+export const bookArtifactRefs = sqliteTable("book_artifact_refs", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull(),
+  logicalPath: text("logical_path").notNull(),
+  resultPath: text("result_path").notNull(),
+  runId: text("run_id").notNull(),
+  owner: text("owner").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, (t) => [uniqueIndex("idx_book_artifact_identity").on(t.jobId, t.logicalPath)]);

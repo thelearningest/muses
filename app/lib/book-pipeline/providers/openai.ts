@@ -1,4 +1,5 @@
 import type { ReasoningEffort } from "../config";
+import type { VisualCallBudget } from "../operation-repository";
 
 const RESPONSES_URL = "https://api.openai.com/v1/responses";
 const EMBEDDINGS_URL = "https://api.openai.com/v1/embeddings";
@@ -23,6 +24,8 @@ export interface StructuredOutputProvider {
     safetyIdentifier: string;
     images?: InputImage[];
     maxOutputTokens?: number;
+    // Internal admission metadata; deliberately never forwarded to OpenAI.
+    visualBudget?: VisualCallBudget & { inputPrice: number; outputPrice: number };
   }): Promise<StructuredResponse<T>>;
 }
 
@@ -46,6 +49,10 @@ export class OpenAiUnusableResultError extends OpenAiIndeterminateRequestError {
 
 type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
 
+export class OpenAiRejectedRequestError extends Error {
+  constructor(status: number) { super(`OpenAI request rejected with status ${status}`); this.name = "OpenAiRejectedRequestError"; }
+}
+
 async function paidRequest(fetcher: Fetcher, url: string, apiKey: string, payload: unknown): Promise<Response> {
   // Serialization errors happen before transmission and must not consume a
   // reservation. Once fetch starts, an exception cannot prove non-processing.
@@ -55,7 +62,7 @@ async function paidRequest(fetcher: Fetcher, url: string, apiKey: string, payloa
     response = await fetcher(url, { method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, signal: AbortSignal.timeout(90_000), body });
   } catch { throw new OpenAiIndeterminateRequestError(); }
   if (response.status === 408 || response.status >= 500) throw new OpenAiIndeterminateRequestError();
-  if (!response.ok) throw new Error(`OpenAI request rejected with status ${response.status}`);
+  if (!response.ok) throw new OpenAiRejectedRequestError(response.status);
   return response;
 }
 

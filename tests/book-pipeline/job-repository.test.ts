@@ -60,6 +60,7 @@ class SqliteD1 implements D1DatabaseBinding {
 
 function installSchema(db: DatabaseSync) {
   db.exec(`
+    CREATE TABLE book_provider_calls (job_id TEXT, reserved_units INTEGER NOT NULL, actual_units INTEGER NOT NULL);
     CREATE TABLE book_jobs (
       id TEXT PRIMARY KEY NOT NULL,
       capability_hash TEXT NOT NULL,

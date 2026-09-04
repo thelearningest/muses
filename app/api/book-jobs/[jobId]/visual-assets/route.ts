@@ -1,4 +1,5 @@
 import { BookArtifactStore } from "@/app/lib/book-pipeline/artifact-store";
+import { BookOperationRepository } from "@/app/lib/book-pipeline/operation-repository";
 import { BookJobRepository } from "@/app/lib/book-pipeline/job-repository";
 import { getBookPipelineRuntimeEnv } from "@/app/lib/book-pipeline/runtime-env";
 import { assertSameOrigin, hashPrivateValue, readBearerToken } from "@/app/lib/book-pipeline/security";
@@ -29,7 +30,7 @@ export async function PUT(request: Request, context: { params: Promise<{ jobId: 
     }
     text += decoder.decode();
     const value = JSON.parse(text);
-    const store = new BookArtifactStore(env.BOOK_JOBS);
+    const store = new BookArtifactStore(env.BOOK_JOBS,new BookOperationRepository(env.DB));
     const state = await store.getJson<VisualState>(job.id, VISUAL_STATE_PATH);
     const expected = state && renderRequests(state).find((r) => r.id === value.id);
     if (!state || !expected) return Response.json({ error: { code: "unexpected_render_asset" } }, { status: 409 });
