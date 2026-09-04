@@ -29,7 +29,8 @@ async function setup() {
   const call = vi.fn(async () => response);
   const provider = new VisualQuestProvider({ generateStructured: call } as unknown as StructuredOutputProvider, store, { id: "job", expiresAt: 10000 },
     { model: "gpt-5.6-luna", plannedQuests: 0, maxMicros: 150000, inputUsdPerMillion: 0.2, outputUsdPerMillion: 1.2 });
-  const request = { model: "legacy", reasoningEffort: "none" as const, schemaName: "verified_quest", schema: {}, instructions: "Verify", safetyIdentifier: "identity", input: JSON.stringify({ evidenceContract: contract, quest: { question: "Which layout is aligned?" } }) };
+  const images = await questVisualImages(store, "job", [contract]);
+  const request = { model: "legacy", reasoningEffort: "none" as const, schemaName: "verified_quest", schema: {}, instructions: "Verify", safetyIdentifier: "identity", input: JSON.stringify({ evidenceContract: contract, quest: { question: "Which layout is aligned?" } }), images };
   return { store, values, contract, state, call, provider, request };
 }
 
@@ -37,8 +38,8 @@ describe("visual evidence RPG handoff", () => {
   it("preserves pairs and limitations while rejecting stale or missing crops", async () => {
     const s = await setup();
     const images = await questVisualImages(s.store, "job", [s.contract, s.contract]);
-    expect(images).toHaveLength(2); expect(images[0].label).toContain("reference_only");
-    expect(images[1].label).toContain("Small text is illegible");
+    expect(images).toHaveLength(2); expect(images[0].label).toBe("From your book · PDF page 1 · image 1");
+    expect(images[1].label).toBe("From your book · PDF page 1 · image 2");
     s.state.candidates[0].revision = 1;
     await s.store.putJson("job", VISUAL_STATE_PATH, s.state, 10000);
     await expect(questVisualImages(s.store, "job", [s.contract])).rejects.toThrow(/Stale/);
@@ -72,10 +73,10 @@ describe("visual evidence RPG handoff", () => {
     await expect(s.provider.generateStructured(s.request)).rejects.toThrow(/budget/);
     expect(s.call).not.toHaveBeenCalled();
   });
-  it("leaves legacy text-only verification unchanged", async () => {
+  it("rejects legacy text-only verification", async () => {
     const s = await setup();
-    const request = { ...s.request, input: JSON.stringify({ quest: "Text only" }) };
-    await s.provider.generateStructured(request);
-    expect(s.call).toHaveBeenCalledExactlyOnceWith(request);
+    const request = { ...s.request, input: JSON.stringify({ quest: "Text only" }), images: undefined };
+    await expect(s.provider.generateStructured(request)).rejects.toThrow(/Visual quest evidence required/);
+    expect(s.call).not.toHaveBeenCalled();
   });
 });

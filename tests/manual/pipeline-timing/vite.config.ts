@@ -28,7 +28,9 @@ export default defineConfig({
       try {
         if (request.method !== "POST" || request.headers.origin !== `http://127.0.0.1:${harnessPort}`) throw new Error("Invalid request");
         const chunks: Buffer[] = []; let bytes = 0;
-        for await (const chunk of request) { bytes += chunk.length; if (bytes > 2_000_000) throw new Error("Too large"); chunks.push(chunk); }
+        // Three player-visible source crops can legitimately make a complete
+        // timing record several megabytes. This endpoint is local-only.
+        for await (const chunk of request) { bytes += chunk.length; if (bytes > 10_000_000) throw new Error("Too large"); chunks.push(chunk); }
         const result = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         if (!/^[a-f0-9-]{36}$/.test(result.jobId) || result.pages !== expectedPages) throw new Error("Invalid result");
         const folder = path.join(project, "outputs/pipeline-timing"); await mkdir(folder, { recursive: true });

@@ -29,5 +29,9 @@ it("waits for actual crops, pins hashes and supplies those images to quest verif
   const annotations = (await store.getJson<{ annotations: unknown[] }>("job", "visual-annotations.json"))!.annotations;
   const images = await questVisualImages(store, "job", [{ visualAnnotations: annotations }] as Parameters<typeof questVisualImages>[2]);
   expect(images).toHaveLength(3);
-  expect(images.every((image) => image.label.includes("reference_only"))).toBe(true);
+  expect(images.map((image) => image.label)).toEqual([
+    "From your book · PDF page 4",
+    "From your book · PDF page 3",
+    "From your book · PDF page 2",
+  ]);
 });

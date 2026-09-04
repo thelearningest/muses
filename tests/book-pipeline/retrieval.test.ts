@@ -6,10 +6,17 @@ import { buildQuestContract, expandWithinParent, reciprocalRankFusion, retrieveQ
 import { OpenAiEmbeddingsProvider } from "../../app/lib/book-pipeline/providers/openai";
 
 function retrievalFixture(fetcher: (_url: string, init?: RequestInit) => Promise<Response>) {
-  const canonical: CanonicalBook = { schemaVersion: 1, source: { fingerprint: "f", filename: "book.pdf", pageCount: 1 }, pages: [{ index: 0, blockIds: ["b"], visualReferences: [], warnings: [] }], blocks: [{ id: "b", pageIndex: 0, type: "paragraph", readingOrder: 0, text: "Observe before deciding.", ancestorHeadings: [], visualReferenceIds: [] }], warnings: [] };
-  const bookMap: BookMap = { schemaVersion: 1, thesis: "Observe first", learningArc: ["Observe"], chapters: [], concepts: [{ id: "c", name: "Observe", summary: "Observe first", evidenceCardIds: [], prerequisiteConceptIds: [], relatedConceptIds: [], score: 1, confidence: 1 }], contradictions: [], visualOpportunities: [], omissions: [], proposedQuestConceptIds: ["c"] };
+  const canonical: CanonicalBook = { schemaVersion: 1, source: { fingerprint: "f", filename: "book.pdf", pageCount: 3 },
+    pages: [0, 1, 2].map((index) => ({ index, blockIds: [`b${index}`], visualReferences: [], warnings: [] })),
+    blocks: [0, 1, 2].map((pageIndex) => ({ id: `b${pageIndex}`, pageIndex, type: "paragraph", readingOrder: pageIndex, text: `Observe before deciding ${pageIndex}.`, ancestorHeadings: [], visualReferenceIds: [] })), warnings: [] };
+  const cards: EvidenceCard[] = [0, 1, 2].map((index) => ({ id: `card${index}`, sectionId: "s", concept: `Observe ${index}`, supportedClaim: `Observe before deciding ${index}.`,
+    sources: [{ pageStart: index, pageEnd: index, canonicalBlockIds: [`b${index}`], boundedExcerpt: `Observe before deciding ${index}.` }], playerVerbs: ["compare"], applicableProcess: ["inspect"],
+    successfulExamples: ["inspect first"], failureModes: ["guessing"], misconceptions: [], prerequisites: [], causalLinks: [], tradeoffs: [], visualReferenceIds: [], importanceSignals: [], confidence: 1, uncertainty: [], contradictions: [] }));
+  const bookMap: BookMap = { schemaVersion: 1, thesis: "Observe first", learningArc: ["Observe"], chapters: [],
+    concepts: cards.map((card, index) => ({ id: `c${index}`, name: card.concept, summary: card.supportedClaim, evidenceCardIds: [card.id], prerequisiteConceptIds: [], relatedConceptIds: [], score: 1, confidence: 1 })),
+    contradictions: [], visualOpportunities: [], omissions: [], proposedQuestConceptIds: ["c0", "c1", "c2"] };
   const repository = { reserveProviderCost: vi.fn().mockResolvedValue(true), reconcileProviderCost: vi.fn(), appendOpenAiRequestId: vi.fn(), commitStage: vi.fn(), markRecoverable: vi.fn() };
-  const store = { getJson: async <T,>(_job: string, path: string): Promise<T | null> => (path === "evidence-manifest.json" ? { batchCount: 1 } : { cards: [] }) as T, putJson: vi.fn() };
+  const store = { getJson: async <T,>(_job: string, path: string): Promise<T | null> => (path === "evidence-manifest.json" ? { batchCount: 1 } : { cards }) as T, putJson: vi.fn() };
   return { job: { id: "job", batchCursor: 0, identityHash: "identity", expiresAt: 999 }, canonical, bookMap, visualAnnotations: [], provider: new OpenAiEmbeddingsProvider("test", fetcher), repository, store, model: "text-embedding-3-small", reserveCostUnits: 100, maxCostUnits: 1000, now: 1 };
 }
 
@@ -22,13 +29,20 @@ describe("hybrid quest retrieval", () => {
     expect(input.repository.markRecoverable).toHaveBeenCalledWith("job", "retrieving_quest_evidence", "manual_retry_required", "manual_retry_required", 1);
   });
   it("does not release a paid embedding charge when later grounding fails", async () => {
-    const input = retrievalFixture(async () => Response.json({ data: [{ index: 0, embedding: [1] }, { index: 1, embedding: [1] }] }));
+    const input = retrievalFixture(async (_url, init) => {
+      const values = JSON.parse(String(init?.body)).input as string[];
+      return Response.json({ data: values.map((_, index) => ({ index, embedding: [1] })) });
+    });
+    input.store.putJson.mockRejectedValueOnce(new Error("Storage unavailable"));
     expect(await retrieveQuestEvidenceStage(input)).toMatchObject({ outcome: "interrupted" });
     expect(input.repository.reconcileProviderCost.mock.calls).toEqual([["job", 100, 100, 1]]);
-    expect(input.store.putJson).not.toHaveBeenCalled();
+    expect(input.store.putJson).toHaveBeenCalled();
   });
   it("retains the reservation if accounting persistence fails after a paid result", async () => {
-    const input = retrievalFixture(async () => Response.json({ data: [{ index: 0, embedding: [1] }, { index: 1, embedding: [1] }] }));
+    const input = retrievalFixture(async (_url, init) => {
+      const values = JSON.parse(String(init?.body)).input as string[];
+      return Response.json({ data: values.map((_, index) => ({ index, embedding: [1] })) });
+    });
     input.repository.reconcileProviderCost.mockRejectedValueOnce(new Error("Database unavailable"));
     await retrieveQuestEvidenceStage(input);
     expect(input.repository.reconcileProviderCost.mock.calls).toEqual([["job", 100, 100, 1]]);

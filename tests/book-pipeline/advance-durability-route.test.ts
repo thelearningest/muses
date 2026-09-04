@@ -17,16 +17,16 @@ import { ConditionalR2 } from "./durable-fixture";
 const quest = (i: number): Quest => {
   const choices = ["a","b","c"].map((id,index) => ({ id,label: `${id} option ${i}`,feedback: index ? "Contradicts evidence." : "Uses evidence.",correct: index === 0 }));
   return { id: `q${i}`,number: String(i+1),title: `Trial ${i}`,gallery: `Lab ${i}`,story: `Situation ${i}.`,objective: `Apply ${i}.`,clue: `Inspect ${i}.`,artifact: "console",xp: 100,
-    observationTools: [`meter ${i}`,`log ${i}`,`map ${i}`], diagnosis: choices,repairs: choices,principle: { name: `Concept ${i}`,summary: `Claim ${i}` },
-    visual: { mode: i === 0 ? "3d" : "diagram",form: "console",accent: "green",title: `Console ${i}`,problemLabel: `Fault ${i}`,repairLabel: `Fix ${i}`,elements: [`sensor ${i}`,`signal ${i}`,`switch ${i}`] },
+    observationTools: [`meter ${i}`,`log ${i}`,`map ${i}`], diagnosis: choices,repairs: choices,diagnosisQuestion: `Which visible relationship shows fault ${i}?`,repairQuestion: `Which visible reference supports fix ${i}?`,principle: { name: `Concept ${i}`,summary: `Claim ${i}` },
+    visual: { mode: "source-image",form: "console",accent: "green",title: `Console ${i}`,problemLabel: `Fault ${i}`,repairLabel: `Fix ${i}`,elements: [`sensor ${i}`,`signal ${i}`,`switch ${i}`],regions: [{ imageIndex: 0,label: `Left ${i}`,x: 0,y: 0,width: 0.5,height: 1 },{ imageIndex: 0,label: `Right ${i}`,x: 0.5,y: 0,width: 0.5,height: 1 }],sourceImages: [{ imageUrl: `data:image/png;base64,A${i}==`,width: 300,height: 200,label: `Page ${i+1}` }] },
     sourceAnchors: [{ label: `Page ${i+1}`,pageStart: i+1,pageEnd: i+1 }] };
 };
-const game: GameContent = { sourceTitle: "Source",title: "Game",subtitle: "Learn",setting: "Lab",quests: [0,1,2,3].map(quest) };
-const canonical: CanonicalBook = { schemaVersion: 1,source: { fingerprint: "f",filename: "source.pdf",pageCount: 4 },pages: [0,1,2,3].map((index) => ({ index,blockIds: [`b${index}`],visualReferences: [],warnings: [] })),
-  blocks: [0,1,2,3].map((pageIndex) => ({ id: `b${pageIndex}`,pageIndex,type: "paragraph",readingOrder: pageIndex,text: `Observe before deciding ${pageIndex}.`,ancestorHeadings: [],visualReferenceIds: [] })),warnings: [] };
+const game: GameContent = { sourceTitle: "Source",title: "Game",subtitle: "Learn",setting: "Lab",quests: [0,1,2].map(quest) };
+const canonical: CanonicalBook = { schemaVersion: 1,source: { fingerprint: "f",filename: "source.pdf",pageCount: 3 },pages: [0,1,2].map((index) => ({ index,blockIds: [`b${index}`],visualReferences: [],warnings: [] })),
+  blocks: [0,1,2].map((pageIndex) => ({ id: `b${pageIndex}`,pageIndex,type: "paragraph",readingOrder: pageIndex,text: `Observe before deciding ${pageIndex}.`,ancestorHeadings: [],visualReferenceIds: [] })),warnings: [] };
 const section = chunkCanonicalBook(canonical).sections[0];
-const cards: EvidenceCard[] = [0,1,2,3].map((i) => ({ id: `card${i}`,sectionId: section.id,concept: `Concept ${i}`,supportedClaim: `Observe before deciding ${i}.`,sources: [{ pageStart: i,pageEnd: i,canonicalBlockIds: [`b${i}`],boundedExcerpt: `Observe before deciding ${i}.` }],playerVerbs: ["observe"],applicableProcess: ["record"],successfulExamples: ["record first"],failureModes: ["guess"],misconceptions: [],prerequisites: [],causalLinks: [],tradeoffs: [],visualReferenceIds: [],importanceSignals: [],confidence: 0.9,uncertainty: [],contradictions: [] }));
-const bookMap: BookMap = { schemaVersion: 1,thesis: "Observe first",learningArc: [],chapters: [],concepts: cards.map((c,i) => ({ id: `c${i}`,name: c.concept,summary: c.supportedClaim,evidenceCardIds: [c.id],prerequisiteConceptIds: [],relatedConceptIds: [],score: 1,confidence: 1 })),contradictions: [],visualOpportunities: [],omissions: [],proposedQuestConceptIds: ["c0","c1","c2","c3"] };
+const cards: EvidenceCard[] = [0,1,2].map((i) => ({ id: `card${i}`,sectionId: section.id,concept: `Concept ${i}`,supportedClaim: `Observe before deciding ${i}.`,sources: [{ pageStart: i,pageEnd: i,canonicalBlockIds: [`b${i}`],boundedExcerpt: `Observe before deciding ${i}.` }],playerVerbs: ["observe"],applicableProcess: ["record"],successfulExamples: ["record first"],failureModes: ["guess"],misconceptions: [],prerequisites: [],causalLinks: [],tradeoffs: [],visualReferenceIds: [],importanceSignals: [],confidence: 0.9,uncertainty: [],contradictions: [] }));
+const bookMap: BookMap = { schemaVersion: 1,thesis: "Observe first",learningArc: [],chapters: [],concepts: cards.map((c,i) => ({ id: `c${i}`,name: c.concept,summary: c.supportedClaim,evidenceCardIds: [c.id],prerequisiteConceptIds: [],relatedConceptIds: [],score: 1,confidence: 1 })),contradictions: [],visualOpportunities: [],omissions: [],proposedQuestConceptIds: ["c0","c1","c2"] };
 const contracts: QuestEvidenceContract[] = cards.map((c,i) => ({ id: `contract${i}`,conceptId: `c${i}`,centralClaim: c.supportedClaim,playerActions: c.playerVerbs,sources: c.sources,visualAnnotations: [],confidence: 0.9,missingEvidence: [] }));
 
 describe("actual advance route durable paid-call acceptance", () => {
@@ -48,19 +48,20 @@ describe("actual advance route durable paid-call acceptance", () => {
   }
   async function seedVisual(usedCalls = 5) {
     const expiry = Math.floor(Date.now()/1000)+3600;
-    const state: VisualState = { schemaVersion: 1,promptVersion: "visual-v1",sourceFingerprint: "f",phase: "done",step: 5,pages: [0],queue: [],selectedIds: ["v0"],stopReason: "sampled_selection_complete",
+    const state: VisualState = { schemaVersion: 1,promptVersion: "visual-v1",sourceFingerprint: "f",phase: "done",step: 5,pages: [0,1,2],queue: [],selectedIds: ["v0","v1","v2"],stopReason: "sampled_selection_complete",
       usage: { calls: usedCalls,inputTokens: 100,outputTokens: 100,estimatedMicros: 100,reservedMicros: 0 },
-      candidates: [{ id: "v0",pageIndex: 0,title: "Grid",concept: "grid",boxes: [{ x: 0,y: 0,width: 0.5,height: 1 },{ x: 0.5,y: 0,width: 0.5,height: 1 }],evidenceIds: ["b0"],revision: 0,cropHashes: ["hash0","hash1"],verdict: { disposition: "reference_only",evidenceIds: ["b0"],claims: [],reason: "Reference only" } }] };
+      candidates: [0,1,2].map((i) => ({ id: `v${i}`,pageIndex: i,title: `Grid ${i}`,concept: `grid ${i}`,boxes: [{ x: 0,y: 0,width: 1,height: 1 }],evidenceIds: [`b${i}`],revision: 0,cropHashes: [`hash${i}`],verdict: { disposition: "reference_only" as const,evidenceIds: [`b${i}`],claims: [],reason: "Reference only" } })) };
     const evidence = structuredClone(contracts);
-    evidence[0].visualAnnotations = [{ visualReferenceId: "v0",description: "Paired reference",source: evidence[0].sources[0],visualAgent: { candidateId: "v0",revision: 0,disposition: "reference_only",limitations: ["Small text is illegible"] } }];
+    evidence.forEach((contract,i) => { contract.visualAnnotations = [{ visualReferenceId: `v${i}`,description: `Reference ${i}`,source: contract.sources[0],visualAgent: { candidateId: `v${i}`,revision: 0,disposition: "reference_only",limitations: ["Small text is illegible"] } }]; });
     await store.putJson("job","quest-evidence.json",{ contracts: evidence },expiry);
     await store.putJson("job",VISUAL_STATE_PATH,state,expiry);
-    for (let i = 0; i < 2; i++) await store.putJson("job",`visual-agent/assets/v0-r0-${i}-crop.json`,{ id: `v0-r0-${i}-crop`,hash: `hash${i}`,width: 300,height: 200,imageUrl: `data:image/png;base64,${i}`,renderer: "fixture",rotation: 0 },expiry);
+    for (let i = 0; i < 3; i++) await store.putJson("job",`visual-agent/assets/v${i}-r0-0-crop.json`,{ id: `v${i}-r0-0-crop`,hash: `hash${i}`,width: 300,height: 200,imageUrl: `data:image/png;base64,A${i}==`,renderer: "fixture",rotation: 0 },expiry);
     return state;
   }
   it.each(["mapping_evidence","retrieving_quest_evidence","generating_game","verifying_quests"] as const)("admits exactly one provider call under competing HTTP requests: %s", async (status) => {
     stage(status);
     if (status === "mapping_evidence") await store.delete("job","evidence/0.json");
+    if (status === "generating_game" || status === "verifying_quests") await seedVisual();
     let entered!: () => void; let release!: () => void;
     const started = new Promise<void>((r) => { entered = r; }); const gate = new Promise<void>((r) => { release = r; });
     const fetcher = vi.fn(async (_url: string,init: RequestInit) => { entered(); await gate; return reply(JSON.parse(String(init.body)),status === "mapping_evidence" ? { cards } : status === "generating_game" ? game : { accepted: true,issues: [] }); });
@@ -73,7 +74,7 @@ describe("actual advance route durable paid-call acceptance", () => {
     expect(db.database.prepare("SELECT COUNT(*) AS n FROM book_artifact_refs").get()?.n).toBeGreaterThan(0);
   });
   it("replays verification and repair after failed publication without repeating any of its three calls", async () => {
-    stage("verifying_quests");
+    stage("verifying_quests"); await seedVisual();
     let count = 0;
     const fetcher = vi.fn(async (_url: string,init: RequestInit) => { count++; return reply(JSON.parse(String(init.body)),count === 1 ? { accepted: false,issues: ["Fix clue"] } : count === 2 ? { ...quest(0),clue: "Inspect the recorded evidence." } : { accepted: true,issues: [] }); });
     vi.stubGlobal("fetch",fetcher);
@@ -95,10 +96,10 @@ describe("actual advance route durable paid-call acceptance", () => {
     stage("verifying_quests"); await seedVisual();
     const fetcher = vi.fn(async (_url: string,init: RequestInit) => {
       const payload = JSON.parse(String(init.body));
-      expect(payload.model).toBe("gpt-5.6-luna"); expect(payload.reasoning.effort).toBe("none"); expect(payload.max_output_tokens).toBe(1000);
+      expect(payload.model).toBe("gpt-5.6-sol"); expect(payload.reasoning.effort).toBe("low"); expect(payload.max_output_tokens).toBe(2000);
       expect(payload.visualBudget).toBeUndefined();
       const images = payload.input[0].content.filter((c: { type: string }) => c.type === "input_image");
-      expect(images.map((i: { image_url: string }) => i.image_url)).toEqual(["data:image/png;base64,0","data:image/png;base64,1"]);
+      expect(images.map((i: { image_url: string }) => i.image_url)).toEqual(["data:image/png;base64,A0=="]);
       expect(payload.input[0].content.some((c: { text?: string }) => c.text?.includes("Small text is illegible"))).toBe(true);
       return reply(payload,{ accepted: true,issues: [] });
     });
@@ -109,7 +110,7 @@ describe("actual advance route durable paid-call acceptance", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     const ledger = db.database.prepare("SELECT state,visual_budget FROM book_provider_calls").all();
     expect(ledger).toHaveLength(1); expect(ledger[0].state).toBe("complete");
-    expect(JSON.parse(String(ledger[0].visual_budget))).toEqual({ micros: 37,input: 100,output: 10,calls: 1 });
+    expect(JSON.parse(String(ledger[0].visual_budget))).toEqual({ micros: 825,input: 100,output: 10,calls: 1 });
     expect((await store.getJson<VisualState>("job",VISUAL_STATE_PATH))?.usage.calls).toBe(5);
   });
   it("rejects changed visual pixels on replay without another provider call", async () => {
