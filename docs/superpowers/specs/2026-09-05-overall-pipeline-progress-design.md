@@ -38,6 +38,8 @@ The client performs a lightweight read-only status check while a long model requ
 
 For large PDFs, the browser finishes the server-requested preparation set before asking the extraction stage to advance again. The server discovers missing page packets before acquiring the paid-stage lease. This prevents repeated whole-book object scans and ensures a 1–300 page preparation pass cannot consume a model-operation lease before any model call begins.
 
+Page-packet and visual-asset uploads are content-addressed/idempotent at the job boundary. The client gives transient network failures two bounded retries with a per-attempt timeout; HTTP validation errors still fail immediately. This prevents a single dropped browser request late in a large preparation pass from abandoning hundreds of successful page uploads.
+
 The label makes this distinction understandable: preparation shows values such as `144 of 210 pages prepared`, model extraction shows `144 of 210 pages read`, and milestone-only phases show the current activity without inventing a count.
 
 ## Recovery behavior

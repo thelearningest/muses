@@ -77,6 +77,24 @@ export class BookJobClient {
     return { authorization: `Bearer ${job.capabilityToken}`, ...(mutation ? { "content-type": "application/json" } : {}) };
   }
 
+  private async uploadJson(job: ResumableBookJob, path: string, body: unknown): Promise<void> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await parseResponse(await this.fetcher(`${this.origin}${path}`, {
+          method: "PUT", headers: this.headers(job, true), body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
+        }));
+        return;
+      } catch (error) {
+        const retryable = error instanceof TypeError || (error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name));
+        if (!retryable || attempt === 2) throw error;
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+      }
+    }
+    throw lastError;
+  }
+
   async create(input: { file: File; rightsConfirmed: true; browserToken: string; turnstileToken: string }): Promise<ResumableBookJob> {
     const response = await this.fetcher(`${this.origin}/api/book-jobs`, {
       method: "POST",
@@ -100,7 +118,7 @@ export class BookJobClient {
   }
 
   async uploadVisualAsset(job: ResumableBookJob, asset: unknown): Promise<void> {
-    await parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/visual-assets`, { method: "PUT", headers: this.headers(job, true), body: JSON.stringify(asset) }));
+    await this.uploadJson(job, `/api/book-jobs/${encodeURIComponent(job.jobId)}/visual-assets`, asset);
   }
 
   async initializeExtraction(job: ResumableBookJob, manifest: { sourceFingerprint: string; pageCount: number }): Promise<void> {
@@ -108,7 +126,7 @@ export class BookJobClient {
   }
 
   async uploadExtractionAsset(job: ResumableBookJob, asset: unknown): Promise<void> {
-    await parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, { method: "PUT", headers: this.headers(job, true), body: JSON.stringify(asset) }));
+    await this.uploadJson(job, `/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, asset);
   }
 
   async acknowledge(job: ResumableBookJob): Promise<void> {

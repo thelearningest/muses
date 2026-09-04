@@ -41,14 +41,14 @@ async function verifyQuest(input: { quest: Quest; contract: QuestEvidenceContrac
   });
 }
 
-async function repairQuest(input: { quest: Quest; contract: QuestEvidenceContract; issues: string[]; provider: StructuredOutputProvider; repository: Pick<BookJobRepository, "appendOpenAiRequestId">; jobId: string; identityHash: string; model: string; reasoningEffort: ReasoningEffort; now: number }): Promise<Quest> {
+async function repairQuest(input: { quest: Quest; contract: QuestEvidenceContract; issues: string[]; priorIssues: string[]; repairAttempt: number; provider: StructuredOutputProvider; repository: Pick<BookJobRepository, "appendOpenAiRequestId">; jobId: string; identityHash: string; model: string; reasoningEffort: ReasoningEffort; now: number }): Promise<Quest> {
   const candidate = await traced<Quest>(input.provider, input.repository, input.jobId, input.now, {
     model: input.model,
     reasoningEffort: input.reasoningEffort,
     schemaName: "repaired_quest",
     schema: QUEST_SCHEMA,
-    instructions: `Repair only the supplied quest. Resolve every listed verification issue using only the evidence contract. Preserve its id, number and valid page anchors. Return the complete repaired quest and no commentary. ${MODEL_EVIDENCE_RULES}\n${GAME_RENDERER_RULES}`,
-    input: JSON.stringify({ quest: modelQuest(input.quest), evidenceContract: modelEvidenceContract(input.contract), issues: input.issues }),
+    instructions: `Repair only the supplied quest. Resolve every listed verification issue using only the evidence contract. Preserve its id, number and valid page anchors. Return the complete repaired quest and no commentary. If this is a repeated repair, do not toggle a disputed answer back and forth. When reviewers disagree about a tiny or visually ambiguous feature, replace that scored observation with a different, clearly legible relationship in the same player-visible image. Prefer a simple robust visual question over a fragile micro-detail. ${MODEL_EVIDENCE_RULES}\n${GAME_RENDERER_RULES}`,
+    input: JSON.stringify({ quest: modelQuest(input.quest), evidenceContract: modelEvidenceContract(input.contract), repairAttempt: input.repairAttempt, priorIssues: input.priorIssues, issues: input.issues }),
     images: playerImages(input.quest),
     safetyIdentifier: input.identityHash,
   });
@@ -110,8 +110,11 @@ export async function verifyNextQuestStage(input: {
     let verdict = await verifyQuest({ ...requestContext, quest, contract });
     await requireActiveJob(input.isActive);
     let repairs = 0;
+    const priorIssues: string[] = [];
     while (!verdict.accepted && repairs < input.config.maxRepairAttempts) {
-      quest = await repairQuest({ ...requestContext, quest, contract, issues: verdict.issues });
+      const currentIssues = verdict.issues;
+      quest = await repairQuest({ ...requestContext, quest, contract, issues: currentIssues, priorIssues, repairAttempt: repairs + 1 });
+      priorIssues.push(...currentIssues);
       await requireActiveJob(input.isActive);
       const candidate = { ...game, quests: game.quests.map((existing, questIndex) => questIndex === index ? quest : existing) };
       const deterministicIssues = validateGameAgainstContracts(candidate, input.contracts);
@@ -157,9 +160,12 @@ async function verifyRemainingQuests(input: Parameters<typeof verifyNextQuestSta
       let quest = original;
       let verdict = await verifyQuest({ ...context, quest });
       let repairs = 0;
+      const priorIssues: string[] = [];
       while (!verdict.accepted && repairs < input.config.maxRepairAttempts) {
         await requireActiveJob(input.isActive);
-        quest = await repairQuest({ ...context, quest, issues: verdict.issues });
+        const currentIssues = verdict.issues;
+        quest = await repairQuest({ ...context, quest, issues: currentIssues, priorIssues, repairAttempt: repairs + 1 });
+        priorIssues.push(...currentIssues);
         await requireActiveJob(input.isActive);
         verdict = await verifyQuest({ ...context, quest });
         repairs++;

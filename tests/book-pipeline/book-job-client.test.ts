@@ -124,6 +124,15 @@ describe("resumable book job client", () => {
     try { expect((await new BookJobClient().status(job)).stage).toBe("reading_source"); }
     finally { globalThis.fetch = original; }
   });
+  it.each(["extraction", "visual-assets"])("retries an idempotent %s asset upload after a transient network failure", async (kind) => {
+    const fetcher = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce(Response.json({ accepted: true }));
+    const client = new BookJobClient(fetcher);
+    if (kind === "extraction") await client.uploadExtractionAsset(job, { pageIndex: 0 });
+    else await client.uploadVisualAsset(job, { id: "asset" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(String(fetcher.mock.calls[0][0])).toContain(`/api/book-jobs/${job.jobId}/${kind}`);
+    expect(fetcher.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
   it("prepares only the requested extraction manifest and page before resuming", async () => {
     const controller = new AbortController();
     const prepareExtractionManifest = vi.fn(async () => undefined), prepareExtractionPage = vi.fn(async () => undefined);

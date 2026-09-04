@@ -299,7 +299,7 @@ export async function POST(request: Request, context: Context) {
         config: {
           model: config.verificationModel,
           reasoningEffort: config.verificationReasoningEffort,
-          maxRepairAttempts: 1,
+          maxRepairAttempts: config.maxQuestRepairAttempts,
           parallel: parallelQuests,
           reserveCostUnits: config.mapCostReserveUnits,
           maxCostUnits: config.maxProviderCostUnitsPerJob,

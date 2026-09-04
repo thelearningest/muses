@@ -10,18 +10,21 @@ function makeQuest(index: number): Quest {
     observationTools: [`meter ${index}`, `log ${index}`, `map ${index}`],
     diagnosis: [{ id: "a", label: `cause ${index}`, feedback: "Yes.", correct: true }, { id: "b", label: `guess ${index}`, feedback: "No.", correct: false }, { id: "c", label: `delay ${index}`, feedback: "No.", correct: false }],
     repairs: [{ id: "a", label: `repair ${index}`, feedback: "Yes.", correct: true }, { id: "b", label: `patch ${index}`, feedback: "No.", correct: false }, { id: "c", label: `ignore ${index}`, feedback: "No.", correct: false }],
+    diagnosisQuestion: `Which visible relationship identifies cause ${index}?`, repairQuestion: `Which visible change repairs issue ${index}?`,
     principle: { name: `Concept ${index}`, summary: `Claim ${index}` },
-    visual: { mode: index === 0 ? "3d" : "diagram", form: "console", accent: "green", title: `Console ${index}`, problemLabel: `Fault ${index}`, repairLabel: `Fix ${index}`, elements: [`sensor ${index}`, `signal ${index}`, `switch ${index}`] },
+    visual: { mode: "source-image", form: "console", accent: "green", title: `Console ${index}`, problemLabel: `Fault ${index}`, repairLabel: `Fix ${index}`, elements: [`sensor ${index}`, `signal ${index}`, `switch ${index}`],
+      regions: [{ imageIndex: 0, label: `Left ${index}`, x: 0, y: 0, width: 0.5, height: 1 }, { imageIndex: 0, label: `Right ${index}`, x: 0.5, y: 0, width: 0.5, height: 1 }],
+      sourceImages: [{ imageUrl: `data:image/png;base64,A${index}==`, width: 300, height: 200, label: `Page ${index + 1}` }] },
     sourceAnchors: [{ label: `Section ${index}`, pageStart: index + 1, pageEnd: index + 1 }],
   };
 }
 
 function makeContracts() {
-  return Array.from({ length: 4 }, (_, index) => ({ id: `contract-${index}`, conceptId: `c${index}`, centralClaim: `Claim ${index}`, playerActions: ["apply"], sources: [{ pageStart: index, pageEnd: index, canonicalBlockIds: [`b${index}`], boundedExcerpt: `Evidence ${index}` }], visualAnnotations: [], confidence: 0.9, missingEvidence: [] }));
+  return Array.from({ length: 3 }, (_, index) => ({ id: `contract-${index}`, conceptId: `c${index}`, centralClaim: `Claim ${index}`, playerActions: ["apply"], sources: [{ pageStart: index, pageEnd: index, canonicalBlockIds: [`b${index}`], boundedExcerpt: `Evidence ${index}` }], visualAnnotations: [], confidence: 0.9, missingEvidence: [] }));
 }
 
 function game(): GameContent {
-  return { sourceTitle: "Source", title: "Game", subtitle: "Learn", setting: "Lab", quests: Array.from({ length: 4 }, (_, index) => makeQuest(index)) };
+  return { sourceTitle: "Source", title: "Game", subtitle: "Learn", setting: "Lab", quests: Array.from({ length: 3 }, (_, index) => makeQuest(index)) };
 }
 
 function repository() {
@@ -40,7 +43,7 @@ describe("targeted quest verification", () => {
     const provider: StructuredOutputProvider = {
       partition: () => provider,
       async generateStructured<T>() {
-        if (++started === 4) release();
+        if (++started === 3) release();
         await gate;
         return response({ accepted: true, issues: [] } as T);
       },
@@ -50,8 +53,8 @@ describe("targeted quest verification", () => {
       game: game(), contracts: makeContracts(), provider, repository: repository(), store,
       config: { model: "gpt-5.4-mini", reasoningEffort: "low", maxRepairAttempts: 2, parallel: true }, now: 1 });
     expect(result.outcome).toBe("complete");
-    expect(started).toBe(4);
-    expect(store.putJson.mock.calls.filter((call) => String(call[1]).startsWith("verification/"))).toHaveLength(4);
+    expect(started).toBe(3);
+    expect(store.putJson.mock.calls.filter((call) => String(call[1]).startsWith("verification/"))).toHaveLength(3);
     expect(isGamePackage(store.putJson.mock.calls.find((call) => call[1] === "game.json")?.[2])).toBe(true);
   });
   // Simultaneous paid-call acceptance lives in advance-durability-route.test.ts.
@@ -71,7 +74,7 @@ describe("targeted quest verification", () => {
   it("does not report complete when the final database transition loses", async () => {
     const repo = repository(); repo.markTerminal.mockResolvedValue(false);
     const result = await verifyNextQuestStage({
-      job: { id: "job", batchCursor: 4, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 },
+      job: { id: "job", batchCursor: 3, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 },
       game: game(), contracts: makeContracts(), provider: { generateStructured: vi.fn() }, repository: repo, store: { putJson: vi.fn() },
       config: { model: "gpt-5.4-mini", reasoningEffort: "low", maxRepairAttempts: 2 }, now: 1,
     });
@@ -105,7 +108,7 @@ describe("targeted quest verification", () => {
       expect(payload.evidenceContract.sources[0].pageStart).toBe(2);
       expect(payload.quest.sourceAnchors[0].pageStart).toBe(2);
       expect(input.instructions).toContain("original fiction");
-      expect(input.instructions).toContain("static observation-topic labels");
+      expect(input.instructions).toContain("static topic labels only");
       return response(outputs.shift() as T);
     } };
     const writes: Array<[string, unknown]> = [];
@@ -136,11 +139,34 @@ describe("targeted quest verification", () => {
     expect(repo.markTerminal).toHaveBeenCalledWith("job", "failed_terminal", "verification_failed", 1, 99, "verifying_quests");
   });
 
+  it("tells a second repair to abandon a disputed micro-detail instead of toggling it", async () => {
+    const original = game();
+    const firstRepair = { ...original.quests[0], repairQuestion: "Does the tiny arrow point left?" };
+    const robustRepair = { ...original.quests[0], repairQuestion: "Which large colored panel sits on the right?" };
+    const outputs: unknown[] = [
+      { accepted: false, issues: ["The tiny arrow points right."] }, firstRepair,
+      { accepted: false, issues: ["The tiny arrow points left."] }, robustRepair,
+      { accepted: true, issues: [] },
+    ];
+    const repairPayloads: Array<Record<string, unknown>> = [];
+    const provider: StructuredOutputProvider = { async generateStructured<T>(request) {
+      if (request.schemaName === "repaired_quest") repairPayloads.push(JSON.parse(request.input));
+      return response(outputs.shift() as T);
+    } };
+    const result = await verifyNextQuestStage({
+      job: { id: "job", batchCursor: 0, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 },
+      game: original, contracts: makeContracts(), provider, repository: repository(), store: { putJson: vi.fn() },
+      config: { model: "gpt-5.6-sol", reasoningEffort: "low", maxRepairAttempts: 2 }, now: 1,
+    });
+    expect(result).toMatchObject({ outcome: "advanced", verifiedQuests: 1 });
+    expect(repairPayloads[1]).toMatchObject({ repairAttempt: 2, priorIssues: ["The tiny arrow points right."], issues: ["The tiny arrow points left."] });
+  });
+
   it("stores a package accepted by the existing game engine", async () => {
     const provider: StructuredOutputProvider = { async generateStructured<T>() { return response({ accepted: true, issues: [] } as T); } };
     let saved: unknown;
     const result = await verifyNextQuestStage({
-      job: { id: "job", batchCursor: 3, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 }, game: game(), contracts: makeContracts(), provider, repository: repository(),
+      job: { id: "job", batchCursor: 2, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 }, game: game(), contracts: makeContracts(), provider, repository: repository(),
       store: { putJson: async (_job, path, value) => { if (path === "game.json") saved = value; } },
       config: { model: "gpt-5.4-mini", reasoningEffort: "low", maxRepairAttempts: 2 }, now: 1_800_000_000,
     });

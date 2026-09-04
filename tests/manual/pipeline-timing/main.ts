@@ -5,10 +5,13 @@ const status = document.querySelector<HTMLPreElement>("#status")!;
 const run = document.querySelector<HTMLButtonElement>("#run")!;
 const resume = document.querySelector<HTMLButtonElement>("#resume")!;
 let file: File;
+let expectedPages = 0;
 document.querySelector("#load")!.addEventListener("click", async () => {
-  const response = await fetch("/__source.pdf");
-  if (!response.ok) throw new Error("Source fixture unavailable");
-  file = new File([await response.blob()], "grid-first-100.pdf", { type: "application/pdf" });
+  const [response, metadataResponse] = await Promise.all([fetch("/__source.pdf"), fetch("/__metadata")]);
+  if (!response.ok || !metadataResponse.ok) throw new Error("Source fixture unavailable");
+  const metadata = await metadataResponse.json() as { filename: string; expectedPages: number };
+  expectedPages = metadata.expectedPages;
+  file = new File([await response.blob()], metadata.filename, { type: "application/pdf" });
   status.textContent = `Source loaded (${file.size} bytes). The timed run has not started.`;
   run.disabled = false;
   resume.disabled = !loadResumableJob(sessionStorage);
@@ -35,14 +38,18 @@ async function execute(resuming: boolean) {
       onStatus(value) { if (value.stage !== previous) { previous = value.stage; log(value.stage); } },
       prepareExtractionManifest: async (fingerprint, maxPages) => {
         const pdf = await documentFor();
-        if (pdf.pageCount !== 100 || pdf.pageCount > maxPages) throw new Error("Expected exactly 100 PDF pages");
+        if (pdf.pageCount !== expectedPages || pdf.pageCount > maxPages) throw new Error(`Expected exactly ${expectedPages} PDF pages`);
         await client.initializeExtraction(job!, { sourceFingerprint: fingerprint, pageCount: pdf.pageCount });
       },
       prepareExtractionPage: async (request, fingerprint) => client.uploadExtractionAsset(job!, await (await documentFor()).prepareExtraction(request, fingerprint)),
+      onPreparationProgress: ({ completedPages, totalPages }) => {
+        const milestone = completedPages === totalPages || completedPages % Math.max(1, Math.ceil(totalPages / 10)) === 0;
+        if (milestone) log(`prepared_${completedPages}_of_${totalPages}`);
+      },
       renderAssets: async (requests, fingerprint) => { for (const request of requests) await client.uploadVisualAsset(job!, await (await documentFor()).render(request, fingerprint)); },
       saveGame: async (game) => {
         const seconds = (performance.now() - start) / 1000;
-        const response = await fetch("/__result", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: job!.jobId, startedAt, seconds, fresh: !resuming, passed: !resuming && seconds < 120, pages: 100, sourceBytes: file.size, events, game }) });
+        const response = await fetch("/__result", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jobId: job!.jobId, startedAt, seconds, fresh: !resuming, passed: !resuming, pages: expectedPages, sourceBytes: file.size, events, game }) });
         if (!response.ok) throw new Error("Could not save timing result");
       }, clear() { sessionStorage.removeItem(RESUMABLE_JOB_KEY); },
     });
