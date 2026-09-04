@@ -11,6 +11,9 @@ export function durableStage(operations: BookOperationRepository, owner: StageOw
   const artifacts: Record<string,string> = {};
   const local = new Map<string,unknown>();
   const journal = new PaidCallJournal(operations,owner,baseStore,limits);
+  // The legacy request-id appender is read/modify/write. Serialize just this
+  // tiny metadata operation while provider calls themselves remain parallel.
+  let requestWrites = Promise.resolve(true);
   const store = new Proxy(baseStore, { get(target,key) {
     if (key === "putJson") return async (jobId: string, path: string, value: unknown, expires: number) => {
       if (jobId !== owner.jobId || !await operations.renew(owner)) throw new OpenAiIndeterminateRequestError();
@@ -25,7 +28,10 @@ export function durableStage(operations: BookOperationRepository, owner: StageOw
   // Legacy stage accounting is intentionally disabled: each actual call now
   // reserves and settles in the operation ledger, including every repair.
   const repository = {
-    appendOpenAiRequestId: baseRepository.appendOpenAiRequestId.bind(baseRepository),
+    appendOpenAiRequestId: (...args: Parameters<BookJobRepository["appendOpenAiRequestId"]>) => {
+      requestWrites = requestWrites.then(() => baseRepository.appendOpenAiRequestId(...args));
+      return requestWrites;
+    },
     commitStage: async (input: Parameters<BookJobRepository["commitStage"]>[0]) =>
       input.jobId === owner.jobId && input.expectedStatus === owner.stage &&
       operations.transition(owner,{ status: input.nextStatus, cursor: input.batchCursor },artifacts),

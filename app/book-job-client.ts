@@ -164,6 +164,7 @@ export async function driveBookJob(input: {
   }));
   let lastAdvanceAt = 0;
   while (!input.signal.aborted) {
+    let progressed = false;
     const status = await input.client.status(input.job);
     if (input.signal.aborted) return "aborted";
     input.onStatus(status);
@@ -192,6 +193,7 @@ export async function driveBookJob(input: {
         throw error;
       }
       lastAdvanceAt = now();
+      progressed = !["waiting", "inactive"].includes(advanced.outcome);
       if (input.signal.aborted) return "aborted";
       if (advanced.outcome === "awaiting_extraction_manifest") {
         if (!input.prepareExtractionManifest || !advanced.sourceFingerprint || !advanced.maxPages) throw new BookJobClientError("source_file_needed", "Select the same PDF to continue reading it.", 409);
@@ -206,7 +208,9 @@ export async function driveBookJob(input: {
         await input.renderAssets(advanced.renderRequests, advanced.sourceFingerprint);
       }
     }
-    await sleep(status.stage === "waiting_for_ocr" ? 5_000 : 1_200, input.signal);
+    // Yield to the browser after useful work, but only back off when waiting.
+    // A fixed per-step sleep added minutes to otherwise healthy book jobs.
+    await sleep(progressed ? 0 : status.stage === "waiting_for_ocr" ? 5_000 : 1_200, input.signal);
   }
   return "aborted";
 }

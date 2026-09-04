@@ -14,6 +14,20 @@ The downstream concurrency audit reproduced four duplicate-call gaps. The user s
 
 An efficient, effective agentic pipeline that accepts a book PDF in the website and produces a source-aligned, visually appealing, pedagogically useful, RPG-like game that can run in production. Do not substitute a manually prepared sample or a passing verifier for this result.
 
+## 2026-09-05 speed and minimal-implementation update
+
+The user changed the timing target from 300 pages to **100 PDF pages in under 120 seconds**, and requested minimal implementation and essential tests only. Time from clicking Generate through upload/preparation to receipt of the complete playable, verified game. Record network, file size and runtime conditions; a cached run, first quest, or timed-out partial game is not a pass. Retain the existing 300-page upload ceiling; it is not a two-minute claim for 300 pages.
+
+The historical 65.022-second result was the sum of **six** Luna page requests, excluding rendering and all downstream work. The source has 109 PDF pages. Its saved report and metrics are in ignored `outputs/luna-benchmark/`. There is no measured 100- or 300-page speed result in that benchmark.
+
+Current changes remove the 1.2-second sleep after productive browser steps. New ingestion manifests pin parallel quest generation/verification; legacy manifests retain their prior prompts and call order. New generation produces a short shared world, then up to nine independent source-contracted quests with Sol at explicit `none` effort. Each quest receives only its own visual references. Verification and bounded repair use independent durable call-slot ranges, wait for all dispatched calls to settle, and publish only the complete validated game. The existing request-id metadata appender is serialized to prevent lost concurrent updates. Existing storage, schema, renderer and model providers are reused; no migration or new service was added.
+
+The fresh v3.1 source job was paused at 14/109 pages, 27 calls and an estimated $0.943380. Its saved artifacts remain intact. Serial page transcription and visual/evidence-stage latency still need replacement/measurement. **The 100-page timing target is not achieved.** No additional paid calls were made for these downstream changes.
+
+Checkpoint: 39 targeted tests pass, TypeScript passes, and the current production build succeeds. These checks prove the implemented concurrency/replay integration, not a measured end-to-end speedup. Public deployment and a fresh timed production job remain pending.
+
+A compiled Worker with isolated local D1/R2 passed synthetic publication, retrieval and cleanup (`outputs/local-storage-smoke/storage-smoke-06a55a95-75dc-483e-9c74-b43bb5c61438/result.json`, `productionWorker: true`, zero provider calls). This proves local compiled-route/storage behavior, not paid ingestion, game quality or hosted deployment. Current validation is intentionally focused on changed client/generation/verification/journal paths and the real-route ownership checks, followed by the production build. Do not require optional broad aesthetic/OCR benchmark rounds before the next real full-job timing test.
+
 ## Current authoritative evidence
 
 | Requirement | Evidence inspected | Finding / next work |

@@ -33,6 +33,27 @@ function response<T>(data: T) {
 }
 
 describe("targeted quest verification", () => {
+  it("verifies all remaining quests concurrently before publishing the complete game", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let started = 0;
+    const provider: StructuredOutputProvider = {
+      partition: () => provider,
+      async generateStructured<T>() {
+        if (++started === 4) release();
+        await gate;
+        return response({ accepted: true, issues: [] } as T);
+      },
+    };
+    const store = { putJson: vi.fn() };
+    const result = await verifyNextQuestStage({ job: { id: "job", batchCursor: 0, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 },
+      game: game(), contracts: makeContracts(), provider, repository: repository(), store,
+      config: { model: "gpt-5.4-mini", reasoningEffort: "low", maxRepairAttempts: 2, parallel: true }, now: 1 });
+    expect(result.outcome).toBe("complete");
+    expect(started).toBe(4);
+    expect(store.putJson.mock.calls.filter((call) => String(call[1]).startsWith("verification/"))).toHaveLength(4);
+    expect(isGamePackage(store.putJson.mock.calls.find((call) => call[1] === "game.json")?.[2])).toBe(true);
+  });
   // Simultaneous paid-call acceptance lives in advance-durability-route.test.ts.
   it("does not repair or publish when cancelled during verification", async () => {
     let active = true;

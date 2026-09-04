@@ -5,6 +5,7 @@ import { BookOperationRepository, type StageOwner } from "../../app/lib/book-pip
 import { PaidCallJournal } from "../../app/lib/book-pipeline/paid-call-journal";
 import { durableStage } from "../../app/lib/book-pipeline/durable-stage";
 import { OpenAiRejectedRequestError } from "../../app/lib/book-pipeline/providers/openai";
+import type { StructuredOutputProvider } from "../../app/lib/book-pipeline/providers/openai";
 import { MigratedD1 } from "./sqlite-d1";
 import { ConditionalR2 } from "./durable-fixture";
 
@@ -19,6 +20,19 @@ describe("paid result recovery and atomic artifact publication", () => {
     db.database.exec("UPDATE book_jobs SET status='generating_game',current_stage='generating_game'"); owner = (await operations.acquire(identity))!;
   });
   afterEach(() => db.close());
+  it("replays partitioned calls even when sibling completion order changes", async () => {
+    const send = vi.fn(async () => ({ responseId: "response", data: {}, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } }));
+    const provider = { generateStructured: send } as StructuredOutputProvider;
+    const request = { model: "gpt-5.6-sol", reasoningEffort: "none" as const, schemaName: "test", schema: {}, instructions: "test", input: "test", safetyIdentifier: "identity" };
+    const first = journal().structured(provider);
+    await Promise.all([first.partition!(0).generateStructured({ ...request, input: "zero" }), first.partition!(1).generateStructured({ ...request, input: "one" })]);
+    const replay = journal().structured(provider);
+    await replay.partition!(1).generateStructured({ ...request, input: "one" });
+    await replay.partition!(0).generateStructured({ ...request, input: "zero" });
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(await operations.latestCall(owner,10)).toMatchObject({ state: "complete" });
+    expect(await operations.latestCall(owner,20)).toMatchObject({ state: "complete" });
+  });
   it("replays after a crash between raw persistence and accounting without another call", async () => {
     const send = vi.fn(async () => ({ value: "saved" }));
     vi.spyOn(operations,"settle").mockRejectedValueOnce(new Error("simulated D1 outage"));

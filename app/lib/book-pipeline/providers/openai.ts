@@ -14,6 +14,8 @@ export type StructuredResponse<T> = {
 export type InputImage = { imageUrl: string; detail: "low" | "high"; label: string; width?: number; height?: number };
 
 export interface StructuredOutputProvider {
+  /** Stable independent call sequence, used for concurrent quest work. */
+  partition?(index: number): StructuredOutputProvider;
   generateStructured<T>(input: {
     model: string;
     reasoningEffort: ReasoningEffort;

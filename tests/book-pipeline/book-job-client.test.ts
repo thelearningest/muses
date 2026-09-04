@@ -59,7 +59,7 @@ describe("resumable book job client", () => {
     const advance = vi.fn().mockResolvedValueOnce({ outcome: "awaiting_extraction_manifest", sourceFingerprint: "source", maxPages: 300 })
       .mockResolvedValueOnce({ outcome: "awaiting_extraction_assets", sourceFingerprint: "source", request: { pageIndex: 7, revision: 1, parts: 2, allowNative: false } });
     let sleeps = 0;
-    await driveBookJob({ job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "reading_source" as const, recoverable: false })), advance, acknowledge: vi.fn() }, signal: controller.signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(), prepareExtractionManifest, prepareExtractionPage, sleep: async () => { if (++sleeps === 2) controller.abort(); } });
+    await driveBookJob({ job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "reading_source" as const, recoverable: false })), advance, acknowledge: vi.fn() }, signal: controller.signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(), prepareExtractionManifest, prepareExtractionPage, sleep: async (milliseconds) => { expect(milliseconds).toBe(0); if (++sleeps === 2) controller.abort(); } });
     expect(prepareExtractionManifest).toHaveBeenCalledWith("source", 300);
     expect(prepareExtractionPage).toHaveBeenCalledWith({ pageIndex: 7, revision: 1, parts: 2, allowNative: false }, "source");
     expect(advance).toHaveBeenCalledTimes(2);

@@ -36,6 +36,11 @@ export class VisualQuestProvider implements StructuredOutputProvider {
     private readonly job: { id: string; expiresAt: number }, private readonly config: VisualConfig,
     private readonly durable = false) {}
 
+  partition(index: number): StructuredOutputProvider {
+    if (!this.durable || !this.provider.partition) throw new Error("Parallel visual verification requires durable partitions");
+    return new VisualQuestProvider(this.provider.partition(index), this.store, this.job, this.config, true);
+  }
+
   async generateStructured<T>(request: Parameters<StructuredOutputProvider["generateStructured"]>[0]): Promise<StructuredResponse<T>> {
     const payload = JSON.parse(request.input) as { evidenceContract?: QuestEvidenceContract };
     if (!payload.evidenceContract?.visualAnnotations.some((a) => a.visualAgent)) return this.provider.generateStructured<T>(request);

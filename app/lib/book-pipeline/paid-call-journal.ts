@@ -10,16 +10,17 @@ export async function operationHash(value: unknown): Promise<string> {
 type VisualActual = { micros: number; input: number; output: number };
 type Saved<T> = { version: 1; requestHash: string; actualUnits: number; result: T; visual?: VisualActual };
 
-/** One sequential call slot per deterministic stage execution. Request drift is
- * rejected, not interpreted as permission for another paid operation. */
+/** Deterministic call sequences; each concurrent quest gets its own slot range.
+ * Request drift is rejected, not permission for another paid operation. */
 export class PaidCallJournal {
   private slot = 0;
   constructor(private readonly operations: BookOperationRepository, private readonly owner: StageOwner,
     private readonly store: Pick<BookArtifactStore,"getJson" | "putJsonIfAbsent">,
-    private readonly limits: { reserveUnits: number; ceiling: number; retryConfirmed: boolean }) {}
+    private readonly limits: { reserveUnits: number; ceiling: number; retryConfirmed: boolean }, private readonly baseSlot = 0) {}
 
   async execute<T>(request: unknown, send: () => Promise<T>, units: (result: T) => number, visual?: VisualCallBudget, actualVisual?: (result: T) => VisualActual): Promise<T> {
-    const slot = this.slot++;
+    if (this.slot >= 10) throw new Error("Operation call sequence exhausted");
+    const slot = this.baseSlot + this.slot++;
     const requestHash = await operationHash(request);
     if (!await this.operations.renew(this.owner)) throw new OpenAiIndeterminateRequestError();
     const prior = await this.operations.latestCall(this.owner,slot);
@@ -55,7 +56,10 @@ export class PaidCallJournal {
   }
 
   structured(provider: StructuredOutputProvider): StructuredOutputProvider {
-    return { generateStructured: <T>(request: Parameters<StructuredOutputProvider["generateStructured"]>[0]) => {
+    return { partition: (index: number) => {
+      if (this.baseSlot !== 0 || !Number.isSafeInteger(index) || index < 0 || index >= 9) throw new Error("Invalid operation partition");
+      return new PaidCallJournal(this.operations,this.owner,this.store,this.limits,(index + 1) * 10).structured(provider);
+    }, generateStructured: <T>(request: Parameters<StructuredOutputProvider["generateStructured"]>[0]) => {
       const { visualBudget, ...payload } = request;
       return this.execute<StructuredResponse<T>>({ kind: "responses", request: payload },() => provider.generateStructured<T>(payload),
         (r) => Math.max(1,Math.ceil(r.usage.totalTokens / 1000)),visualBudget,visualBudget ? (r) => ({ micros: Math.ceil(r.usage.inputTokens*visualBudget.inputPrice*1.25+r.usage.outputTokens*visualBudget.outputPrice), input: r.usage.inputTokens, output: r.usage.outputTokens }) : undefined);

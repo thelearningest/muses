@@ -87,20 +87,21 @@ export async function POST(request: Request, context: Context) {
     const config = parseBookPipelineConfig(stringEnv);
     const operations = new BookOperationRepository(env.DB);
     let store = new BookArtifactStore(env.BOOK_JOBS,operations);
+    const ingestion = await store.getJson<{ provider: string; parallelQuests?: boolean }>(job.id, "ingestion.json");
+    const parallelQuests = ingestion?.parallelQuests === true;
     if (job.cancellationRequested || ["cancelled", "failed_terminal", "complete", "acknowledged", "cleaned"].includes(job.status)) return Response.json({ outcome: "inactive" });
     if (["mapping_evidence", "building_book_map", "retrieving_quest_evidence", "generating_game", "verifying_quests"].includes(job.status)) {
       const owner = await operations.acquire({ jobId: job.id, stage: job.status, cursor: job.batchCursor, retryConfirmed,
-        policyHash: await operationHash({ version: "downstream-durable-v1", source: job.sourceFingerprint, config, visualLimits: lunaLimits(env,"BOOK_VISUAL") }) });
+        policyHash: await operationHash({ version: parallelQuests ? "downstream-parallel-quests-v2" : "downstream-durable-v1", source: job.sourceFingerprint, config, visualLimits: lunaLimits(env,"BOOK_VISUAL") }) });
       if (!owner) {
         const run = await operations.state(`${job.id}:${job.status}:${job.batchCursor}`);
         const waiting = run?.state === "running" && run.lease_until > Math.floor(Date.now()/1000);
         if (!waiting) await operations.suspendExpired(`${job.id}:${job.status}:${job.batchCursor}`);
         return Response.json(waiting ? { outcome: "waiting" } : { error: { code: "manual_retry_required", message: "The previous operation stopped before its outcome was confirmed. Retry explicitly; it may already have been charged." } },{ status: waiting ? 202 : 409 });
       }
-      durable = durableStage(operations,owner,store,repository,{ reserveUnits: job.status === "generating_game" ? Math.max(config.mapCostReserveUnits,4000) : config.mapCostReserveUnits, ceiling: config.maxProviderCostUnitsPerJob, retryConfirmed });
+      durable = durableStage(operations,owner,store,repository,{ reserveUnits: job.status === "generating_game" && !parallelQuests ? Math.max(config.mapCostReserveUnits,4000) : config.mapCostReserveUnits, ceiling: config.maxProviderCostUnitsPerJob, retryConfirmed });
       store = durable.store;
     }
-    const ingestion = await store.getJson<{ provider: string }>(job.id, "ingestion.json");
     const stageJob = job;
     const isStageActive = async () => {
       if (durable) return durable.isActive();
@@ -223,13 +224,15 @@ export async function POST(request: Request, context: Context) {
         isActive: isStageActive,
         bookMap,
         contracts: evidence.contracts,
-        images: await questVisualImages(store, job.id, evidence.contracts),
+        images: parallelQuests ? undefined : await questVisualImages(store, job.id, evidence.contracts),
+        questImages: parallelQuests ? await Promise.all(evidence.contracts.map((contract) => questVisualImages(store, job.id, [contract]))) : undefined,
         provider: durable!.journal.structured(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY"))),
         repository: durable!.repository,
         store,
         config: {
           model: config.generationModel,
-          reasoningEffort: config.generationReasoningEffort,
+          reasoningEffort: parallelQuests ? "none" : config.generationReasoningEffort,
+          parallel: parallelQuests,
           reserveCostUnits: Math.max(config.mapCostReserveUnits, 4_000),
           maxCostUnits: config.maxProviderCostUnitsPerJob,
         },
@@ -256,6 +259,7 @@ export async function POST(request: Request, context: Context) {
           model: config.verificationModel,
           reasoningEffort: config.verificationReasoningEffort,
           maxRepairAttempts: config.maxQuestRepairAttempts,
+          parallel: parallelQuests,
           reserveCostUnits: config.mapCostReserveUnits,
           maxCostUnits: config.maxProviderCostUnitsPerJob,
         },

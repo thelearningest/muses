@@ -5,6 +5,7 @@ import { MODEL_EVIDENCE_RULES, modelEvidenceContract } from "./model-contract";
 import type { ReasoningEffort } from "./config";
 import type { BookJobRepository } from "./job-repository";
 import { OpenAiIndeterminateRequestError, type StructuredOutputProvider, type InputImage } from "./providers/openai";
+import { generateParallelGame } from "./parallel-generation";
 
 export const GAME_GENERATION_INSTRUCTIONS = `Create an original, source-grounded browser learning RPG from only the supplied book map and quest evidence contracts.
 Create one quest per contract, in the supplied sequence (four to nine total). Each quest follows inspect, diagnose, repair, reward. Make players apply the central claim through the permitted player actions. Each diagnosis and repair has exactly three choices and exactly one correct answer. Wrong-choice feedback explains the misconception.
@@ -68,9 +69,10 @@ export async function generateGameStage(input: {
   contracts: QuestEvidenceContract[];
   provider: StructuredOutputProvider;
   images?: InputImage[];
+  questImages?: InputImage[][];
   repository: Pick<BookJobRepository, "commitStage" | "markRecoverable" | "appendOpenAiRequestId"> & Partial<Pick<BookJobRepository, "reserveProviderCost" | "reconcileProviderCost">>;
   store: { putJson(jobId: string, path: string, value: unknown, expiresAt: number): Promise<void> };
-  config: { model: string; reasoningEffort: ReasoningEffort; reserveCostUnits?: number; maxCostUnits?: number };
+  config: { model: string; reasoningEffort: ReasoningEffort; reserveCostUnits?: number; maxCostUnits?: number; parallel?: boolean };
   now: number;
   isActive?: () => Promise<boolean>;
 }) {
@@ -84,7 +86,12 @@ export async function generateGameStage(input: {
     }
     reserved = Boolean(input.config.reserveCostUnits && input.config.maxCostUnits && input.repository.reserveProviderCost);
     const boundedInput = buildGenerationInput(input.bookMap, input.contracts);
-    const response = await input.provider.generateStructured<GameContent>({
+    const response = input.config.parallel ? await generateParallelGame({
+      provider: input.provider, content: boundedInput, instructions: GAME_GENERATION_INSTRUCTIONS,
+      model: input.config.model, reasoningEffort: input.config.reasoningEffort, identity: input.job.identityHash,
+      images: input.images, questImages: input.questImages,
+      recordRequest: async (id) => { await input.repository.appendOpenAiRequestId(input.job.id, id, input.now); },
+    }) : await input.provider.generateStructured<GameContent>({
       model: input.config.model,
       reasoningEffort: input.config.reasoningEffort,
       schemaName: "book_rpg",

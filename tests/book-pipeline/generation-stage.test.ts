@@ -26,6 +26,30 @@ function map(): BookMap {
 }
 
 describe("evidence-driven generation", () => {
+  it("generates independent quests concurrently under one shared world", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let started = 0;
+    const provider: StructuredOutputProvider = {
+      partition: () => provider,
+      async generateStructured<T>(request: Parameters<StructuredOutputProvider["generateStructured"]>[0]) {
+        if (request.schemaName === "rpg_world") return { responseId: "world", data: { title: "Game", subtitle: "Learn", setting: "Shared lab" } as T, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } };
+        const supplied = JSON.parse(request.input);
+        expect(supplied.world.setting).toBe("Shared lab");
+        if (++started === 4) release();
+        await gate;
+        const index = supplied.questIndex;
+        return { responseId: `resp-${index}`, data: { ...quest(index), id: `q${index + 1}` } as T, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } };
+      },
+    };
+    const store = { putJson: vi.fn() };
+    const result = await generateGameStage({ job: { id: "job", identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 },
+      bookMap: map(), contracts: contracts(), provider, repository: { commitStage: vi.fn(), markRecoverable: vi.fn(), appendOpenAiRequestId: vi.fn() }, store,
+      config: { model: "gpt-5.6-sol", reasoningEffort: "none", parallel: true }, now: 1 });
+    expect(result).toMatchObject({ outcome: "complete", questCount: 4 });
+    expect(started).toBe(4);
+    expect(store.putJson).toHaveBeenCalledOnce();
+  });
   // Paid-concurrency acceptance now exercises the actual ownership boundary in
   // advance-durability-route.test.ts, with real migrated SQL and HTTP adapters.
   it("retains the paid reservation when usage persistence fails", async () => {

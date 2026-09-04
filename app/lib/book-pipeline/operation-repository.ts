@@ -67,7 +67,8 @@ export class BookOperationRepository {
   }
 
   async claimCall(run: StageOwner, input: { slot: number; requestHash: string; reserveUnits: number; ceiling: number; retryConfirmed?: boolean; visual?: VisualCallBudget }): Promise<ProviderCall | null> {
-    if (!Number.isSafeInteger(input.slot) || input.slot < 0 || input.slot > 8 || !HASH.test(input.requestHash) ||
+    // Root sequence plus nine quest partitions, ten calls per sequence.
+    if (!Number.isSafeInteger(input.slot) || input.slot < 0 || input.slot > 99 || !HASH.test(input.requestHash) ||
       ![input.reserveUnits,input.ceiling].every((n) => Number.isSafeInteger(n) && n > 0)) throw new Error("Invalid call admission");
     // The provider can attach decimal pricing metadata alongside the admission
     // counters. Validate the actual counter fields, not every extra property.
