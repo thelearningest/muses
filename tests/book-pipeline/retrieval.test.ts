@@ -53,6 +53,22 @@ describe("hybrid quest retrieval", () => {
     await retrieveQuestEvidenceStage(input);
     expect(input.repository.reconcileProviderCost.mock.calls).toEqual([["job", 100, 0, 1]]);
   });
+  it.each([1, 2])("turns %i grounded concept(s) into three distinct visual-practice contracts", async (conceptCount) => {
+    const input = retrievalFixture(async (_url, init) => {
+      const values = JSON.parse(String(init?.body)).input as string[];
+      return Response.json({ data: values.map((_, index) => ({ index, embedding: [1, index + 1] })) });
+    });
+    input.bookMap.concepts = input.bookMap.concepts.slice(0, conceptCount);
+    input.bookMap.proposedQuestConceptIds = input.bookMap.concepts.map((concept) => concept.id);
+
+    expect(await retrieveQuestEvidenceStage(input)).toMatchObject({ outcome: "complete", contractCount: 3 });
+    const write = input.store.putJson.mock.calls.find((call) => call[1] === "quest-evidence.json");
+    const contracts = (write?.[2] as { contracts: Array<{ id: string; conceptId: string; visualAnnotations: unknown[] }> }).contracts;
+    expect(contracts).toHaveLength(3);
+    expect(new Set(contracts.map((contract) => contract.id)).size).toBe(3);
+    expect(new Set(contracts.map((contract) => contract.conceptId)).size).toBe(conceptCount);
+    expect(contracts.slice(conceptCount).every((contract) => contract.visualAnnotations.length === 0)).toBe(true);
+  });
   it("fuses missing lexical/vector results and resolves ties stably", () => {
     expect(reciprocalRankFusion([
       [{ id: "b", score: 2 }, { id: "a", score: 1 }],

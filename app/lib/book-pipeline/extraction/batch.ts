@@ -19,6 +19,7 @@ const RETRY_OUTPUT_TOKENS = 10_000;
 // progress instead of waiting for the entire book (and losing it to one late
 // batch failure).
 export const EXTRACTION_WAVE_SIZE = 6;
+export const NATIVE_TEXT_BYTES_PER_PAGE = 8_000;
 export const BATCH_STATE_PATH = "extraction/state.json";
 export type BatchExtractionState = {
   version: 4; promptVersion: typeof BATCH_PROMPT_VERSION; model: "gpt-5.6-sol";
@@ -37,6 +38,19 @@ type SavedBatch = {
 function isSavedBatch(value: SavedBatch | null, state: BatchExtractionState, pages: number[]): value is SavedBatch {
   return value?.version === 1 && value.promptVersion === BATCH_PROMPT_VERSION && value.fingerprint === state.fingerprint &&
     value.pages.length === pages.length && value.pages.every((page, offset) => page === pages[offset]);
+}
+
+function compactNativeText(value: string): string {
+  if (!value) return "";
+  const encoder = new TextEncoder();
+  if (encoder.encode(value).length <= NATIVE_TEXT_BYTES_PER_PAGE) return value;
+  let low = 0, high = Math.min(value.length, NATIVE_TEXT_BYTES_PER_PAGE);
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (encoder.encode(value.slice(0, middle)).length <= NATIVE_TEXT_BYTES_PER_PAGE) low = middle;
+    else high = middle - 1;
+  }
+  return value.slice(0, low);
 }
 const entrySchema = z.object({
   pageIndex: z.number().int().min(0).max(299),
@@ -159,7 +173,10 @@ export async function advanceBatchExtraction(input: {
     const assets = await Promise.all(pages.map((page) => store.getJson<ExtractionAsset>(job.id, `extraction/assets/${page}-0.json`)));
     if (assets.some((asset, offset) => !asset || asset.pageIndex !== pages[offset] || asset.revision !== 0)) throw new Error("Missing extraction input");
     const images = assets.flatMap((asset) => asset!.images);
-    const text = JSON.stringify({ pages: assets.map((asset) => ({ pageIndex: asset!.pageIndex, nativeText: asset!.nativeText })) });
+    // Native text is a useful auxiliary signal, but a malformed or unusually
+    // dense text layer must not make an otherwise readable page unaffordable.
+    // The complete rendered page is still attached for visual extraction.
+    const text = JSON.stringify({ pages: assets.map((asset) => ({ pageIndex: asset!.pageIndex, nativeText: compactNativeText(asset!.nativeText) })) });
     const tokens = new TextEncoder().encode(text + BATCH_INSTRUCTIONS + JSON.stringify(JSON_SCHEMA)).length + 1000 + images.reduce((sum, image) => sum + extractionImageTokenBound(state.model, image.width, image.height), 0);
     const reserveFor = (outputTokens: number) => Math.ceil(tokens * SOL_EXTRACTION_PRICE.inputUsdPerMillion * 1.25 + outputTokens * SOL_EXTRACTION_PRICE.outputUsdPerMillion);
     const reserved = reserveFor(INITIAL_OUTPUT_TOKENS);

@@ -11,15 +11,17 @@ import { ConditionalR2 } from "./durable-fixture";
 const page = (pageIndex: number) => ({ pageIndex, role: "lesson", concept: `Concept ${pageIndex}`, excerpt: `Evidence for concept ${pageIndex}.`,
   claim: `Evidence for concept ${pageIndex}.`, action: "compare", example: "", pitfall: "", prerequisites: [], visual: null, uncertainty: "Selected excerpt only." });
 
-it.each([1, 7, 8, 9, 100, 299, 300])("discovers preparation work across the supported page range (%i pages)", async (pageCount) => {
-  const state = initialBatchState("f", pageCount, { maxMicros: 15_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 });
-  const present = new Set<number>();
-  const store = { exists: vi.fn(async (_jobId: string, path: string) => present.has(Number(path.match(/assets\/(\d+)-/)?.[1]))) };
-  const first = await pendingBatchExtractionRequests({ jobId: "job", state, store });
-  expect(first).toHaveLength(pageCount);
-  expect(first.map((request) => request.pageIndex)).toEqual(Array.from({ length: pageCount }, (_, index) => index));
-  for (let index = 0; index < pageCount; index++) present.add(index);
-  expect(await pendingBatchExtractionRequests({ jobId: "job", state, store })).toEqual([]);
+it("discovers exact preparation work for every supported page count from 1 through 300", async () => {
+  for (let pageCount = 1; pageCount <= 300; pageCount += 1) {
+    const state = initialBatchState("f", pageCount, { maxMicros: 25_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 });
+    const present = new Set<number>();
+    const store = { exists: vi.fn(async (_jobId: string, path: string) => present.has(Number(path.match(/assets\/(\d+)-/)?.[1]))) };
+    const first = await pendingBatchExtractionRequests({ jobId: "job", state, store });
+    expect(first).toHaveLength(pageCount);
+    expect(first.map((request) => request.pageIndex)).toEqual(Array.from({ length: pageCount }, (_, index) => index));
+    for (let index = 0; index < pageCount; index++) present.add(index);
+    expect(await pendingBatchExtractionRequests({ jobId: "job", state, store })).toEqual([]);
+  }
 });
 
 it("rejects page counts outside the manifest boundary", () => {
@@ -119,3 +121,33 @@ it("returns after each worker-safe wave and resumes from durable completed batch
   expect(send).toHaveBeenCalledTimes(EXTRACTION_WAVE_SIZE + 1);
   expect(await store.getJson("job", "canonical-book.json")).toMatchObject({ source: { pageCount } });
 });
+
+it("completes a dense 300-page text-layer book within the bounded extraction admission", async () => {
+  const store = new BookArtifactStore(new ConditionalR2());
+  const pageCount = 300;
+  const state = initialBatchState("f", pageCount, { maxMicros: 25_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 });
+  await store.putJson("job", "extraction/state.json", state, 5000);
+  for (let index = 0; index < pageCount; index++) {
+    await store.putJson("job", `extraction/assets/${index}-0.json`, {
+      pageIndex: index, revision: 0, nativeText: `${page(index).excerpt} ${"dense ".repeat(5_000)}`, orderReliable: true,
+      images: [{ imageUrl: "data:image/jpeg;base64,AA==", detail: "high", label: `Page ${index}`, width: 1560, height: 2048 }],
+    }, 5000);
+  }
+  const observedTextBytes: number[] = [];
+  const send = vi.fn(async (request: Parameters<StructuredOutputProvider["generateStructured"]>[0]) => {
+    const values = JSON.parse(request.input).pages as Array<{ pageIndex: number; nativeText: string }>;
+    observedTextBytes.push(...values.map((value) => new TextEncoder().encode(value.nativeText).length));
+    return { responseId: `response-${send.mock.calls.length}`, data: { bookTitle: "Dense", pages: values.map((value) => page(value.pageIndex)) },
+      usage: { inputTokens: 100, outputTokens: 100, totalTokens: 200 } };
+  });
+  const provider: StructuredOutputProvider = { partition: () => provider, generateStructured: send };
+  const input = { job: { id: "job", identityHash: "identity", originalFilename: "dense.pdf", expiresAt: 5000 },
+    state, store, provider, isActive: async () => true, assetsReady: true };
+
+  let result: Awaited<ReturnType<typeof advanceBatchExtraction>>;
+  do result = await advanceBatchExtraction(input); while (result.outcome === "advanced");
+  expect(result).toMatchObject({ outcome: "complete", completedPages: 300, totalPages: 300 });
+  expect(send).toHaveBeenCalledTimes(Math.ceil(300 / 8));
+  expect(Math.max(...observedTextBytes)).toBeLessThanOrEqual(8_000);
+  expect(await store.getJson("job", "canonical-book.json")).toMatchObject({ source: { pageCount: 300 } });
+}, 20_000);
