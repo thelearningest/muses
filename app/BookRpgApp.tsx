@@ -20,16 +20,16 @@ import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
 const LIBRARY_KEY = "design-book-rpg-library:v1";
 
 const PIPELINE_STAGES: Array<{ stage: PublicBookJobStage; label: string }> = [
-  { stage: "uploading", label: "Secure upload" },
-  { stage: "preparing", label: "Prepare source" },
-  { stage: "waiting_for_ocr", label: "Read scanned pages" },
-  { stage: "reading_source", label: "Read book pages" },
-  { stage: "extracting_evidence", label: "Extract evidence" },
-  { stage: "building_learning_arc", label: "Build learning arc" },
-  { stage: "inspecting_visuals", label: "Inspect key visuals" },
-  { stage: "assembling_quests", label: "Assemble quest evidence" },
-  { stage: "generating_game", label: "Write the game" },
-  { stage: "verifying_game", label: "Verify every quest" },
+  { stage: "uploading", label: "Uploading your book" },
+  { stage: "preparing", label: "Opening your PDF" },
+  { stage: "waiting_for_ocr", label: "Reading scanned pages" },
+  { stage: "reading_source", label: "Reading your book" },
+  { stage: "extracting_evidence", label: "Finding the key ideas" },
+  { stage: "building_learning_arc", label: "Choosing what you’ll practice" },
+  { stage: "inspecting_visuals", label: "Choosing illustrations" },
+  { stage: "assembling_quests", label: "Planning your quests" },
+  { stage: "generating_game", label: "Creating your adventure" },
+  { stage: "verifying_game", label: "Checking answers against your book" },
   { stage: "ready", label: "Ready to play" },
 ];
 
@@ -53,13 +53,13 @@ function loadGames(): GamePackage[] {
 function messageFor(error: unknown): string {
   if (!(error instanceof BookJobClientError)) return error instanceof Error ? error.message : "The book could not be transformed.";
   const messages: Record<string, string> = {
-    identity_quota_reached: "This browser or network has reached its limit of 5 attempts in 24 hours.",
+    identity_quota_reached: "You’ve reached the upload limit for this browser or shared network. Each attempt becomes available again 24 hours after it was used. You can still play your saved games below.",
     global_capacity_reached: "Today’s 20-book capacity has been reached. Please try again tomorrow.",
     active_job_exists: "This browser already has a book in progress. Finish or cancel it first.",
     turnstile_failed: "The verification challenge expired. Please complete it again.",
-    manual_retry_required: "The provider result was uncertain. Review the status, then retry this same job.",
+    manual_retry_required: "We couldn’t confirm that the last step finished. Your progress is saved. Choose Try again to continue.",
     generation_disabled: "Book generation is temporarily paused.",
-    invalid_game: "The result did not pass local validation and was not saved.",
+    invalid_game: "We couldn’t save a playable game from this result. Please try again.",
   };
   return messages[error.code] ?? error.message;
 }
@@ -104,26 +104,27 @@ function JobProgress({ job, status, onRetry, onCancel }: { job: ResumableBookJob
   const stage = status?.stage ?? job.stage;
   const current = PIPELINE_STAGES.findIndex((item) => item.stage === stage);
   const interrupted = stage === "interrupted";
+  const step = current < 0 ? -1 : current <= 1 ? 0 : current <= 6 ? 1 : current <= 8 ? 2 : 3;
+  const steps = ["Upload", "Read your book", "Create quests", "Check answers"];
   return (
     <section className="job-progress" aria-live="polite" aria-labelledby="job-progress-title">
       <div className="job-progress-heading">
-        <div><span className="eyebrow">Book in progress</span><h3 id="job-progress-title">{interrupted ? "Your work is paused" : PIPELINE_STAGES[current]?.label ?? "Preparing your book"}</h3></div>
-        <span className="job-state">{interrupted ? "Needs attention" : "Processing"}</span>
+        <div><h3 id="job-progress-title">{interrupted ? "Let’s pick up where we left off" : PIPELINE_STAGES[current]?.label ?? "Preparing your book"}</h3></div>
       </div>
       <p className="generation-filename" title={job.filename}>{job.filename}</p>
       <ol className="job-stage-list" aria-label="Generation stages">
-        {PIPELINE_STAGES.map((item, index) => (
-          <li key={item.stage} className={index < current ? "is-complete" : index === current ? "is-current" : ""}>
-            <span>{String(index + 1).padStart(2, "0")}</span><strong>{item.label}</strong>
+        {steps.map((label, index) => (
+          <li key={label} aria-current={index === step ? "step" : undefined} className={index < step ? "is-complete" : index === step ? "is-current" : ""}>
+            <span>{index < step ? "✓" : String(index + 1).padStart(2, "0")}</span><strong>{label}</strong>
           </li>
         ))}
       </ol>
-      {status?.progress?.completedUnits !== undefined && <p className="job-counter">Completed unit {status.progress.completedUnits}{status.progress.totalUnits ? ` of ${status.progress.totalUnits}` : ""}</p>}
-      {interrupted && <p className="job-interruption">{status?.error?.message ?? "The job can resume safely from its last completed stage."}</p>}
-      {job.stage === "uploading" && <p className="job-interruption">The upload was interrupted before the source was secured. Cancel this job and choose the PDF again.</p>}
+      {stage === "reading_source" && !!status?.progress?.totalUnits && <p className="job-counter">Reading {status.progress.totalUnits} pages</p>}
+      <p className="generation-note">Keep this tab open while we prepare your game. This can take a few minutes.</p>
+      {interrupted && <p className="job-interruption">Your completed steps are saved. Try again to continue from here.</p>}
       <div className="job-actions">
-        {interrupted && <button className="button button-primary" type="button" onClick={onRetry}>Retry this stage <span aria-hidden="true">→</span></button>}
-        <button className="text-button text-button-light" type="button" onClick={onCancel}>Cancel and remove temporary files</button>
+        {interrupted && <button className="button button-primary" type="button" onClick={onRetry}>Try again <span aria-hidden="true">→</span></button>}
+        <button className="text-button text-button-light" type="button" onClick={onCancel}>Cancel upload</button>
       </div>
     </section>
   );
@@ -165,7 +166,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
       const file = sourceFile.current;
       rendererPromise ??= import("./visual-page-renderer").then(({ createVisualPageRenderer }) => createVisualPageRenderer(file));
       const renderer = await rendererPromise;
-      if (renderer.fingerprint !== fingerprint) throw new Error("Select the same PDF used for this job.");
+      if (renderer.fingerprint !== fingerprint) { sourceFile.current = null; throw new Error("That’s a different book. Choose the original PDF to continue."); }
       return renderer;
     };
     void driveBookJob({
@@ -274,33 +275,33 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
 
   return (
     <main className="library-shell" aria-busy={!hydrated || isStarting}>
-      <header className="library-header"><div className="brand-mark"><span>Design learning lab</span><strong>Playable Books</strong></div><span className="intro-edition">Book → decisions → practice</span></header>
+      <header className="library-header"><div className="brand-mark"><span>Learn by playing</span><strong>Playable Books</strong></div><a className="library-jump" href="#library-title">Your games ↓</a></header>
       <section className="library-hero">
-        <div><span className="eyebrow">For designers who learn by doing</span><h1>Turn what you read into design decisions.</h1><p>Upload a PDF you have permission to use. We’ll find its strongest lessons, turn them into practical choices, and point every quest back to its source pages.</p></div>
-        <div className="library-process" aria-label="Generation process"><span><strong>01</strong> Upload</span><span><strong>02</strong> Build</span><span><strong>03</strong> Practice</span></div>
+        <div><h1>Put your book into practice.</h1><p>Turn its key ideas into quests. Explore a problem, choose a solution, and learn why it works.</p></div>
       </section>
       <div className="library-grid">
         <section className="upload-panel" aria-labelledby="upload-title">
-          <span className="eyebrow">Start here</span><h2 id="upload-title">Create a game from your book</h2>
+          <h2 id="upload-title">{activeJob ? "Your game is on its way" : "Start with a PDF"}</h2>
           {activeJob ? <JobProgress job={activeJob} status={jobStatus} onRetry={() => void retryJob()} onCancel={() => void cancelJob()} /> : (
             <>
               <form onSubmit={createGame}>
-                <label className="file-field"><span>PDF book</span><input ref={fileRef} type="file" accept="application/pdf,.pdf" required /><small>Scanned or text PDF · maximum 50 MB and 300 pages</small></label>
+                <label className="file-field"><span>Choose your book</span><input ref={fileRef} type="file" accept="application/pdf,.pdf" required /><small>PDF, up to 50 MB · 300 pages maximum. Scans work too.</small></label>
                 <label className="rights-field"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} required /><span>I own this book or have permission to use it.</span></label>
                 <Turnstile onToken={setTurnstileToken} siteKey={turnstileSiteKey} />
-                <button className="button button-primary" type="submit" disabled={!hydrated || !rightsConfirmed || !turnstileToken || isStarting}>{isStarting ? "Securing your upload…" : "Create my learning game"}<span aria-hidden="true">→</span></button>
+                {error && <p className="form-error" role="alert">{error}</p>}
+                <button className="button button-primary" type="submit" disabled={!hydrated || !rightsConfirmed || !turnstileToken || isStarting}>{isStarting ? "Uploading your book…" : "Create my game"}<span aria-hidden="true">→</span></button>
+                <p className="generation-note">Allow a few minutes. Keep this tab open until your game is ready.</p>
               </form>
-              <p className="generation-note">Limit: 5 attempts per browser or network in any 24 hours; 20 jobs site-wide each UTC day.</p>
-              <p className="privacy-note">New books are processed temporarily by OpenAI; older jobs may also use Mistral. Recovery files are kept for no more than 24 hours, then removed. Finished games stay only on this device.</p>
+              <details className="upload-details"><summary>Upload limits & privacy</summary><p>You can start up to 5 uploads in 24 hours per browser or shared network. The site accepts up to 20 books a day, resetting at midnight UTC.</p><p>Your book is sent to OpenAI for processing. Temporary files are removed within 24 hours; older uploads may also have used Mistral. Your finished games are saved in this browser.</p></details>
             </>
           )}
-          {activeJob && <label className="file-field"><span>Resume processing with the same PDF</span><input type="file" accept="application/pdf,.pdf" onChange={(event) => { sourceFile.current = event.target.files?.[0] ?? null; if (sourceFile.current) { setError(""); setDriveVersion((v) => v + 1); } }} /><small>Keep this page open while pages and images are being prepared. Reselecting the PDF resumes this job without repeating completed extraction.</small></label>}
-          <p className="form-error" role="alert" aria-live="assertive">{error}</p>
+          {activeJob && !sourceFile.current && <label className="file-field resume-file"><span>Choose the same PDF to continue</span><input type="file" accept="application/pdf,.pdf" onChange={(event) => { sourceFile.current = event.target.files?.[0] ?? null; if (sourceFile.current) { setError(""); setDriveVersion((v) => v + 1); } }} /><small>Select {activeJob.filename}. Your completed steps will be kept.</small></label>}
+          {activeJob && error && <p className="form-error" role="alert">{error}</p>}
         </section>
         <section className="game-library" aria-labelledby="library-title">
-          <div className="library-section-heading"><div><span className="eyebrow">Pick up where you left off</span><h2 id="library-title">Your learning games</h2></div><span>{games.length + 1} available</span></div>
-          <article className="game-card game-card-featured"><div><span className="game-card-kicker">Ready-to-play example · 6 quests</span><h3>The City of Misfit Things</h3><p>Repair a museum of misleading objects and learn the principles of human-centered design.</p></div><button className="button button-yellow" type="button" onClick={() => setSelected("example")}>Play example <span>→</span></button></article>
-          {games.map((game) => <article className="game-card" key={game.id}><div><span className="game-card-kicker">Made from your book · {game.quests.length} quests</span><h3>{game.title}</h3><p>{game.subtitle}</p><small>From {game.sourceTitle}</small></div><div className="game-card-actions"><button className="button button-yellow" type="button" onClick={() => setSelected(game)}>Play <span>→</span></button><button className="text-button" type="button" onClick={() => { if (window.confirm(`Remove “${game.title}” from this device?`)) saveGames(games.filter((item) => item.id !== game.id)); }}>Remove</button></div></article>)}
+          <div className="library-section-heading"><div><h2 id="library-title">Your games</h2><p className="library-hint">{games.length ? "Saved in this browser. Pick a game to start or continue." : "Your games will appear here. Try the demo while you choose a book."}</p></div></div>
+          {games.map((game) => <article className="game-card" key={game.id}><div><span className="game-card-kicker">{game.quests.length} quests · {game.sourceTitle}</span><h3>{game.title}</h3><p>{game.subtitle}</p></div><div className="game-card-actions"><button className="button button-yellow" type="button" onClick={() => setSelected(game)}>Open game <span aria-hidden="true">→</span></button><button className="text-button" type="button" aria-label={`Remove ${game.title}`} onClick={() => { if (window.confirm(`Remove “${game.title}” from this device?`)) saveGames(games.filter((item) => item.id !== game.id)); }}>Remove</button></div></article>)}
+          <article className="game-card game-card-featured"><div><span className="game-card-kicker">Demo · 6 quests · No upload needed</span><h3>The City of Misfit Things</h3><p>Fix everyday objects that confuse people, from misleading doors to puzzling controls.</p></div><button className="button button-secondary" type="button" onClick={() => setSelected("example")}>Try the demo <span aria-hidden="true">→</span></button></article>
         </section>
       </div>
     </main>

@@ -95,7 +95,7 @@ function GeneratedDiagram({ visual, revealed, repaired }: GeneratedArtifactProps
   return (
     <div className={`generated-diagram generated-${visual.form} accent-${visual.accent}`} role="img" aria-label={`${visual.title}. ${repaired ? visual.repairLabel : visual.problemLabel}`}>
       <div className="generated-diagram-grid" aria-hidden="true" />
-      <div className="generated-diagram-title"><span>Generated study object</span><strong>{visual.title}</strong></div>
+      <div className="generated-diagram-title"><span>The scene</span><strong>{visual.title}</strong></div>
       <div className="generated-elements">
         {visual.elements.map((element, index) => <span key={element} className={`generated-element element-${index + 1}`}>{element}</span>)}
       </div>
@@ -189,7 +189,7 @@ function GeneratedThreeD({ visual, revealed, repaired }: GeneratedArtifactProps)
   return (
     <div className="generated-inspector">
       <div ref={mountRef} className="generated-inspector-canvas" role="img" aria-label={`Interactive 3D model: ${visual.title}`} />
-      <div className="generated-inspector-guide"><span>Book-specific 3D</span><strong>{visual.title}</strong><small>Drag to rotate · scroll to zoom</small></div>
+      <div className="generated-inspector-guide"><span>Explore in 3D</span><strong>{visual.title}</strong><small>Drag to rotate · scroll to zoom</small></div>
       <div className="generated-inspector-elements">{visual.elements.map((element) => <span key={element}>{element}</span>)}</div>
       {revealed && <p className={`generated-finding ${repaired ? "is-repaired" : ""}`}>{repaired ? visual.repairLabel : visual.problemLabel}</p>}
     </div>

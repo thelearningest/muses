@@ -32,12 +32,12 @@ test("server-renders the book-to-RPG library shell", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Playable Books<\/title>/i);
-  assert.match(html, /For designers who learn by doing/i);
-  assert.match(html, /Turn what you read into design decisions/i);
+  assert.match(html, /Learn by playing/i);
+  assert.match(html, /Put your book into practice/i);
   assert.match(html, /The City of Misfit Things/i);
-  assert.match(html, /Create my learning game/i);
-  assert.match(html, /5 attempts per browser or network in any 24 hours/i);
-  assert.match(html, /New books are processed temporarily by OpenAI/i);
+  assert.match(html, /Create my game/i);
+  assert.match(html, /5 uploads in 24 hours per browser or shared network/i);
+  assert.match(html, /Your book is sent to OpenAI for processing/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
@@ -70,7 +70,7 @@ test("ships six quests, local progress, 3D inspection, and narration", async () 
   assert.match(inspector, /gate-inspector-fallback/);
   assert.match(game, /false-handle-gate\.png/);
   assert.match(game, /prefers-reduced-motion|Principle journal/i);
-  assert.match(page, /<BookRpgApp \/>/);
+  assert.match(page, /<BookRpgApp\b/);
   assert.match(layout, /title: "Playable Books"/);
   assert.match(css, /--yellow: #f0ca08/);
   assert.match(css, /\.gate-inspector-canvas/);
@@ -97,8 +97,8 @@ test("ships the resumable, quota-protected PDF-to-RPG job flow", async () => {
   assert.match(shell, /accept="application\/pdf,.pdf"/);
   assert.match(shell, /I own this book or have permission to use it/);
   assert.match(shell, /design-book-rpg-library:v1/);
-  assert.match(shell, /5 attempts per browser or network in any 24 hours/);
-  assert.match(shell, /New books are processed temporarily by OpenAI/);
+  assert.match(shell, /5 uploads in 24 hours per browser or shared network/);
+  assert.match(shell, /Your book is sent to OpenAI for processing/);
   assert.match(client, /create.+upload.+status.+advance.+acknowledge/s);
   assert.match(client, /RESUMABLE_JOB_KEY/);
   assert.match(client, /persistValidGameThenAcknowledge/);

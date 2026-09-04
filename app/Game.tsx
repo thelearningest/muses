@@ -559,13 +559,13 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
     return (
       <figure className="artifact-frame" aria-labelledby="artifact-caption">
         <div className={`${className} artifact-generated`}>
-          <Suspense fallback={<div className="generated-artifact-loading">Preparing the study object…</div>}>
+          <Suspense fallback={<div className="generated-artifact-loading">Loading the scene…</div>}>
             <GeneratedArtifact visual={quest.visual} revealed={revealed} repaired={repaired} />
           </Suspense>
         </div>
         <figcaption id="artifact-caption">
           <span>{quest.gallery}</span>
-          <span>{repaired ? "Repaired state" : revealed ? "Inspection state" : "Arrival state"}</span>
+          <span>{repaired ? "After your fix" : revealed ? "Clues revealed" : "Before your fix"}</span>
         </figcaption>
       </figure>
     );
@@ -712,7 +712,7 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
         )}
       </div>
       <figcaption id="artifact-caption">
-        <span>{quest.gallery}</span>
+            <span>{quest.gallery}</span>
         <span>{repaired ? "Repaired state" : revealed ? "Inspection state" : "Arrival state"}</span>
       </figcaption>
     </figure>
@@ -743,8 +743,8 @@ function PrincipleJournal({
       <div className="journal-sheet">
         <div className="journal-heading">
           <div>
-            <span className="eyebrow">Apprentice field notes</span>
-            <h2 id="journal-title">Principle journal</h2>
+            <span className="eyebrow">Your learning journal</span>
+            <h2 id="journal-title">What you’ve learned</h2>
           </div>
           <button
             className="icon-button"
@@ -762,12 +762,12 @@ function PrincipleJournal({
               <li className={unlocked ? "is-unlocked" : "is-locked"} key={quest.id}>
                 <span className="journal-number">{quest.number}</span>
                 <div>
-                  <span className="journal-state">{unlocked ? "Acquired" : "Uncatalogued"}</span>
+                  <span className="journal-state">{unlocked ? "Completed" : "Not yet completed"}</span>
                   <h3>{unlocked ? quest.principle.name : "Principle locked"}</h3>
                   <p>
                     {unlocked
                       ? quest.principle.summary
-                      : "Complete this gallery repair to add the principle to your journal."}
+                      : "Complete this quest to reveal the lesson and its source pages."}
                   </p>
                   {unlocked && quest.sourceAnchors?.length ? (
                     <p className="journal-source">
@@ -830,7 +830,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
     text: string;
   }>({
     tone: "neutral",
-    text: "Begin with observation. The first interpretation is not always the right one.",
+    text: "Look at the scene, then choose Inspect to reveal the clues.",
   });
   const audioRef = useRef<HTMLAudioElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -1054,7 +1054,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
     setSelectedChoice(null);
     setFeedback({
       tone: "neutral",
-      text: "Begin with observation. The first interpretation is not always the right one.",
+      text: "Look at the scene, then choose Inspect to reveal the clues.",
     });
     setShowIntro(returnToIntro);
   };
@@ -1139,7 +1139,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
     setSelectedChoice(null);
     setFeedback({
       tone: "neutral",
-      text: "New artifact received. Observe before you explain.",
+      text: "Look at the new scene. Choose Inspect when you’re ready.",
     });
     if (progress.currentQuest === quests.length - 1) {
       setProgress((current) => ({ ...current, phase: "complete" }));
@@ -1179,11 +1179,11 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
         <main className="intro-shell" aria-busy={!hydrated}>
           <header className="intro-header">
             <div className="brand-mark">
-              <span>{generated ? "Design archive" : "Museum"}</span>
-              <strong>{generated ? "Field Study" : "Misfit Things"}</strong>
+              <span>{generated ? "Learn by playing" : "Museum"}</span>
+              <strong>{generated ? "Playable Books" : "Misfit Things"}</strong>
             </div>
             <div className="intro-header-tools">
-              <span className="intro-edition">{quests.length}-quest apprenticeship · Device-local progress</span>
+              <span className="intro-edition">{quests.length} quests · Progress saved in this browser</span>
               {onExit ? (
                 <button className="header-action" type="button" onClick={onExit}>
                   Library
@@ -1198,12 +1198,13 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
           </header>
           <section className="intro-grid">
             <div className="intro-copy">
-              <span className="eyebrow">Interactive learning RPG</span>
+              <span className="eyebrow">Your book, a new adventure</span>
               <h1>{game?.title ?? "The City of Misfit Things"}</h1>
               <p className="intro-lede">
                 {game?.subtitle ??
                   "Ordinary objects have begun misleading the city. Enter the museum after hours, repair six exhibits, and learn to see failure as evidence about design. As a Design Warden apprentice, you will observe what goes wrong, identify the cause, choose a repair, and see the result."}
               </p>
+              <p className="intro-howto">Inspect each scene, work out what’s wrong, then choose a fix. Earn XP and collect the key lessons in your journal.</p>
               <div className="intro-facts" aria-label="Game details">
                 <span><strong>{String(quests.length).padStart(2, "0")}</strong> quests</span>
                 <span><strong>Self</strong> paced</span>
@@ -1218,7 +1219,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
                       disabled={!hydrated}
                       onClick={enterMuseum}
                     >
-                      Resume at Object {quest.number}
+                      Continue quest {quest.number}
                       <span aria-hidden="true">→</span>
                     </button>
                     <button
@@ -1227,7 +1228,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
                       disabled={!hydrated}
                       onClick={startFresh}
                     >
-                      Start a new apprenticeship
+                      Start over
                     </button>
                   </>
                 ) : (
@@ -1237,7 +1238,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
                     disabled={!hydrated}
                     onClick={enterMuseum}
                   >
-                    {hydrated ? "Begin the field study" : "Opening the ledger…"}
+                    {hydrated ? "Start quest 1" : "Loading your game…"}
                     <span aria-hidden="true">→</span>
                   </button>
                 )}
@@ -1267,7 +1268,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
             <div className={`intro-artifact${generated ? " intro-artifact-generated" : ""}`}>
               <span className="artifact-index">{generated ? quest.gallery : "COLLECTION 01 / NORTH GATE"}</span>
               {generated && quest.visual ? (
-                <Suspense fallback={<div className="generated-artifact-loading">Building a book-specific study object…</div>}>
+                <Suspense fallback={<div className="generated-artifact-loading">Loading the scene…</div>}>
                   <GeneratedArtifact visual={quest.visual} revealed={false} repaired={false} />
                 </Suspense>
               ) : (
@@ -1303,17 +1304,17 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
               <strong>{game ? "Playable Books" : "Misfit Things"}</strong>
             </div>
             <div className="completion-header-tools">
-              <span className="completion-status">Apprenticeship record · Complete</span>
+              <span className="completion-status">Adventure complete</span>
               <SoundToggle enabled={soundEnabled} onToggle={toggleAmbientSound} />
             </div>
           </header>
           <section className="completion-grid">
             <div className="completion-copy">
-              <span className="eyebrow eyebrow-yellow">{game ? "Field study complete" : "Final commission restored"}</span>
-              <h1>{game ? `You can now apply ${game.sourceTitle}.` : "The museum reopens."}</h1>
+              <span className="eyebrow eyebrow-yellow">{game ? "All quests complete" : "Final commission restored"}</span>
+              <h1>{game ? "You’ve completed your adventure." : "The museum reopens."}</h1>
               <p>
-                You did not memorize a list of rules. You learned to observe behavior, locate the
-                design burden, test a repair, and let real outcomes decide whether it worked.
+                You practiced spotting problems and choosing solutions. Review the lessons in your
+                journal, revisit their source pages, or replay to try a different approach.
               </p>
               <div className="completion-score">
                 <div><strong>{progress.xp}</strong><span>Total XP</span></div>
@@ -1322,7 +1323,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
               </div>
               <div className="completion-actions">
                 <button className="button button-yellow" type="button" onClick={openJournal}>
-                  Review principle journal
+                  Review what you learned
                 </button>
                 <button
                   className="button button-dark-outline"
@@ -1337,12 +1338,12 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
                 </button>
                 {onExit ? (
                   <button className="button button-dark-outline" type="button" onClick={onExit}>
-                    Return to game library
+                    Back to your games
                   </button>
                 ) : null}
               </div>
             </div>
-            <ol className="mastery-list" aria-label="Principles mastered">
+            <ol className="mastery-list" aria-label="Principles practiced">
               {unlockedPrinciples.map((item) => (
                 <li key={item.id}>
                   <span>{item.number}</span>
@@ -1388,7 +1389,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
             </div>
             <div className="xp-meter">
               <div className="xp-copy">
-                <span className="xp-label">Field XP</span>
+                <span className="xp-label">XP earned</span>
                 <strong className="xp-value">
                   <span>{progress.xp}</span>
                   <span aria-hidden="true">/</span>
@@ -1439,9 +1440,9 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
           <aside className="quest-brief">
             <span className="eyebrow">{quest.gallery}</span>
             <h1>{quest.title}</h1>
-            <p className="quest-story">{quest.story}</p>
+            <p className="quest-story">{quest.story.replace(/^Original exercise:\s*/i, "")}</p>
             <div className="objective-block">
-              <span>Objective</span>
+              <span>Your task</span>
               <p>{quest.objective}</p>
             </div>
             <div className="stage-marker">
@@ -1462,20 +1463,20 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
           <aside className="decision-rail">
             {progress.phase === "inspect" && (
               <div className="rail-section">
-                <span className="eyebrow">{game ? "User and task" : "Curator’s lens"}</span>
-                <h2>Observe before explaining.</h2>
+                <span className="eyebrow">{game ? "What to look for" : "Curator’s lens"}</span>
+                <h2>Look for these clues.</h2>
                 <ol className="observation-list">
                   {quest.observationTools.map((tool, index) => (
                     <li key={tool}><span>{String(index + 1).padStart(2, "0")}</span>{tool}</li>
                   ))}
                 </ol>
-                <p className="rail-note">Inspection reveals evidence. It does not select an answer for you.</p>
+                <p className="rail-note">Choose Inspect to reveal what’s happening, then decide what needs to change.</p>
               </div>
             )}
 
             {progress.phase === "diagnose" && (
               <div className="rail-section">
-                <span className="eyebrow">Choose the main cause</span>
+                <span className="eyebrow">Choose an answer</span>
                 <h2>What is causing the problem?</h2>
                 <div className="choice-list">
                   {quest.diagnosis.map((choice) => (
@@ -1496,7 +1497,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
             {progress.phase === "repair" && (
               <div className="rail-section">
                 <span className="eyebrow">Choose one repair</span>
-                <h2>Choose the repair that addresses the cause.</h2>
+                <h2>How would you fix it?</h2>
                 <div className="choice-list">
                   {quest.repairs.map((choice) => (
                     <button
@@ -1515,11 +1516,11 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
 
             {progress.phase === "reward" && (
               <div className="principle-reward">
-                <span className="eyebrow eyebrow-yellow">Principle acquired · +{quest.xp} XP</span>
+                <span className="eyebrow eyebrow-yellow">Quest complete · +{quest.xp} XP</span>
                 <span className="reward-number">{quest.number}</span>
                 <h2>{quest.principle.name}</h2>
                 <p>{quest.principle.summary}</p>
-                <div className="reward-stamp">Filed in your journal</div>
+                <div className="reward-stamp">Saved to your journal</div>
               </div>
             )}
           </aside>
@@ -1544,16 +1545,16 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
               </span>
             </button>
             <button className="button button-dark-outline" type="button" onClick={openJournal}>
-              Open principle journal
+              Your journal
             </button>
             {progress.phase === "inspect" && (
               <button className="button button-yellow" type="button" onClick={handleInspect}>
-                Inspect the artifact <span aria-hidden="true">→</span>
+                Inspect the scene <span aria-hidden="true">→</span>
               </button>
             )}
             {progress.phase === "reward" && (
               <button className="button button-yellow" type="button" onClick={handleContinue}>
-                {progress.currentQuest === quests.length - 1 ? "Complete the field study" : "Continue to next object"}
+                {progress.currentQuest === quests.length - 1 ? "See your results" : "Next quest"}
                 <span aria-hidden="true">→</span>
               </button>
             )}
