@@ -14,7 +14,7 @@ export const BATCH_PROMPT_VERSION = "book-intelligence-batch-v1";
 export const BATCH_STATE_PATH = "extraction/state.json";
 export type BatchExtractionState = {
   version: 4; promptVersion: typeof BATCH_PROMPT_VERSION; model: "gpt-5.6-sol";
-  fingerprint: string; pageCount: number; cursor: number; batchSize: 8; concurrency: 8;
+  fingerprint: string; pageCount: number; cursor: number; batchSize: 8; concurrency: 8 | 12;
   limits: ExtractionLimits; startedAt: number;
   usage: { calls: number; inputTokens: number; outputTokens: number; estimatedMicros: number };
 };
@@ -38,7 +38,7 @@ Choose at most ONE visually appealing, useful image/diagram per page. Record a c
 export function initialBatchState(fingerprint: string, pageCount: number, limits: ExtractionLimits): BatchExtractionState {
   if (!fingerprint || !Number.isSafeInteger(pageCount) || pageCount < 1 || pageCount > 300 || !Number.isSafeInteger(limits.maxMicros) || limits.maxMicros <= 0) throw new Error("Invalid batch manifest");
   return { version: 4, promptVersion: BATCH_PROMPT_VERSION, model: "gpt-5.6-sol", fingerprint, pageCount, cursor: 0,
-    batchSize: 8, concurrency: 8, limits, startedAt: Date.now(), usage: { calls: 0, inputTokens: 0, outputTokens: 0, estimatedMicros: 0 } };
+    batchSize: 8, concurrency: 12, limits, startedAt: Date.now(), usage: { calls: 0, inputTokens: 0, outputTokens: 0, estimatedMicros: 0 } };
 }
 
 export function validateBatchOutput(value: unknown, expectedPages: number[]): BatchOutput {
@@ -81,7 +81,10 @@ export function batchArtifacts(state: BatchExtractionState, filename: string, ba
   validateEvidenceCards(cards, canonical);
   const bookMap = buildBookMap(canonical, cards);
   if (bookMap.proposedQuestConceptIds.length < 4) throw new Error("Insufficient source-grounded concepts");
-  return { canonical, cards, bookMap };
+  const visualCandidates = pages.filter((page) => page.visual && page.role === "lesson").map((page) => ({
+    pageIndex: page.pageIndex, concept: page.concept, evidenceIds: [`batch-p${page.pageIndex}-b0`], ...page.visual!,
+  }));
+  return { canonical, cards, bookMap, visualCandidates };
 }
 
 export async function advanceBatchExtraction(input: {
@@ -89,7 +92,7 @@ export async function advanceBatchExtraction(input: {
   state: BatchExtractionState; store: BookArtifactStore; provider: StructuredOutputProvider; isActive(): Promise<boolean>;
 }) {
   const { job, state, store, provider } = input;
-  if (state.version !== 4 || state.promptVersion !== BATCH_PROMPT_VERSION || state.model !== "gpt-5.6-sol" || state.batchSize !== 8 || state.concurrency !== 8 || !provider.partition) throw new Error("Unsupported batch policy");
+  if (state.version !== 4 || state.promptVersion !== BATCH_PROMPT_VERSION || state.model !== "gpt-5.6-sol" || state.batchSize !== 8 || ![8, 12].includes(state.concurrency) || !provider.partition) throw new Error("Unsupported batch policy");
   const indexes = Array.from({ length: state.pageCount }, (_, index) => index);
   const present = await mapConcurrent(indexes, 8, (index) => store.exists(job.id, `extraction/assets/${index}-0.json`));
   const requests: ExtractionPageRequest[] = indexes.filter((index) => !present[index]).map((pageIndex) => ({ pageIndex, revision: 0, parts: 1, allowNative: true, compact: true }));
@@ -124,7 +127,8 @@ export async function advanceBatchExtraction(input: {
   if (readyGroups.length !== groups.length) return { outcome: "awaiting_extraction_assets" as const, requests, sourceFingerprint: state.fingerprint };
   const artifacts = batchArtifacts(state, job.originalFilename, responses.map((response) => response.data));
   for (const [path, value] of Object.entries({ "canonical-book.json": artifacts.canonical, "evidence/0.json": { cards: artifacts.cards },
-    "evidence-manifest.json": { batchCount: 1 }, "book-map.json": artifacts.bookMap })) await store.putJson(job.id, path, value, job.expiresAt);
+    "evidence-manifest.json": { batchCount: 1 }, "book-map.json": artifacts.bookMap,
+    "extraction-visuals.json": { candidates: artifacts.visualCandidates } })) await store.putJson(job.id, path, value, job.expiresAt);
   const latest = await store.getJsonVersion<BatchExtractionState>(job.id, BATCH_STATE_PATH);
   const usage = responses.reduce((sum, response) => ({ calls: sum.calls + 1, inputTokens: sum.inputTokens + response.usage.inputTokens,
     outputTokens: sum.outputTokens + response.usage.outputTokens,

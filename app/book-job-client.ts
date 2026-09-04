@@ -166,12 +166,19 @@ export async function driveBookJob(input: {
   let lastAdvanceAt = 0;
   let preparation: Promise<void> | undefined;
   let preparationError: unknown;
+  let connectionRecoveries = 0;
   const prepared = new Set<string>();
   try {
   while (!input.signal.aborted) {
     if (preparationError) throw preparationError;
     let progressed = false;
-    const status = await input.client.status(input.job);
+    let status: BookJobStatusResponse;
+    try { status = await input.client.status(input.job); }
+    catch (error) {
+      if (!(error instanceof TypeError) || ++connectionRecoveries > 2) throw error;
+      await sleep(500, input.signal);
+      continue;
+    }
     if (input.signal.aborted) return "aborted";
     input.onStatus(status);
     const action = nextJobAction(status, now(), lastAdvanceAt);
@@ -190,6 +197,13 @@ export async function driveBookJob(input: {
       try { advanced = await input.client.advance(input.job); }
       catch (error) {
         if (input.signal.aborted) return "aborted";
+        // A lost HTTP response is not permission to repeat a paid provider call.
+        // Re-read status first: the server's stage ownership/journal determines
+        // whether work is waiting, completed, replayable, or needs explicit retry.
+        if (error instanceof TypeError && ++connectionRecoveries <= 2) {
+          await sleep(500, input.signal);
+          continue;
+        }
         if (error instanceof BookJobClientError && error.status === 409) {
           const latest = await input.client.status(input.job);
           if (input.signal.aborted) return "aborted";

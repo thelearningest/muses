@@ -14,6 +14,9 @@ export type AgentPorts = {
   call(step: number, request: AgentCall, reservedMicros: number, inputTokenBound: number): Promise<StructuredResponse<unknown>>;
 };
 export function renderRequests(state: VisualState): RenderRequest[] {
+  if (state.phase === "references") return state.candidates.flatMap((candidate) => candidate.boxes.map((box, index) => ({
+    id: `${candidate.id}-r${candidate.revision}-${index}-crop`, pageIndex: candidate.pageIndex, kind: "crop" as const, box, revision: candidate.revision,
+  })));
   const page = (index: number, kind: "page" | "thumbnail"): RenderRequest => ({ id: `${kind}-${index}`, pageIndex: index, kind, box: null, revision: 0 });
   if (state.phase === "scout") return state.pages.map((p) => page(p, "thumbnail"));
   if (state.phase === "crop") return state.queue.length ? [page(state.queue[0], "page")] : [];
@@ -38,6 +41,7 @@ export async function advanceVisualAgent(input: { state: VisualState; book: Cano
   const state = structuredClone(input.state);
   if (input.config.model !== "gpt-5.6-luna") throw new Error("Visual token admission requires the configured Luna model");
   if (state.sourceFingerprint !== input.book.source.fingerprint || state.promptVersion !== "visual-v1") throw new Error("Visual checkpoint belongs to a different source or prompt version");
+  if (state.phase === "references") throw new Error("Batch references use their dedicated preparation stage");
   if (state.phase === "done") return { state, requests: [] };
   if (!state.pages.length) return { state: finished(state, "no_pages"), requests: [] };
   const maxCandidates = input.config.maxCandidates ?? 12;

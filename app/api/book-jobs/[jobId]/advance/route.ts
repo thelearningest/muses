@@ -20,6 +20,7 @@ import { advanceVisualStage, MistralVisualAnnotationProvider } from "@/app/lib/b
 import { verifyNextQuestStage } from "@/app/lib/book-pipeline/verification-stage";
 import type { GameContent } from "@/app/game-package";
 import { runVisualStage } from "@/app/lib/book-pipeline/visual-agent/stage";
+import { prepareBatchReferences } from "@/app/lib/book-pipeline/visual-agent/batch-references";
 import { questVisualImages, VisualQuestProvider } from "@/app/lib/book-pipeline/visual-agent/quest-provider";
 import { advanceExtraction } from "@/app/lib/book-pipeline/extraction/stage";
 import { advanceBatchExtraction, BATCH_STATE_PATH, type BatchExtractionState } from "@/app/lib/book-pipeline/extraction/batch";
@@ -179,6 +180,10 @@ export async function POST(request: Request, context: Context) {
     if (job.status === "annotating_visuals") {
       const canonical = await store.getJson<CanonicalBook>(job.id, "canonical-book.json");
       if (!canonical) return Response.json({ error: { code: "canonical_book_missing" } }, { status: 409 });
+      if (ingestion?.batchedExtraction) {
+        const prepared = await prepareBatchReferences({ job, book: canonical, store, repository, now, isActive: isStageActive });
+        if (prepared) return Response.json(prepared, { headers: { "cache-control": "no-store" } });
+      }
       if (ingestion?.provider === "luna" || env.BOOK_VISUAL_PROVIDER === "luna") {
         const bookMap = await store.getJson<BookMap>(job.id, "book-map.json");
         const result = await runVisualStage({ job, book: canonical, cards: await loadEvidence(store, job.id), store, repository,

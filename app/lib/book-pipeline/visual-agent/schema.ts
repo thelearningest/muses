@@ -34,11 +34,13 @@ export type Candidate = {
   id: string; pageIndex: number; title: string; concept: string; boxes: CropBox[];
   evidenceIds: string[]; revision: number; review?: Review; verdict?: Verdict;
   cropHashes?: string[];
+  // One holistic appeal estimate from the page-reading model, not five reviews.
+  extractionAppeal?: number;
 };
 export type VisualUsage = { calls: number; inputTokens: number; outputTokens: number; reservedMicros: number; estimatedMicros: number };
 export type VisualState = {
-  schemaVersion: 1; promptVersion: "visual-v1"; sourceFingerprint: string;
-  phase: "scout" | "crop" | "review" | "verify" | "select" | "done";
+  schemaVersion: 1; promptVersion: "visual-v1" | "visual-reference-v1"; sourceFingerprint: string;
+  phase: "scout" | "crop" | "review" | "verify" | "select" | "references" | "done";
   step: number; pages: number[]; queue: number[]; candidates: Candidate[];
   selectedIds: string[]; usage: VisualUsage; stopReason: string | null;
   retryCount?: number;

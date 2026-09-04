@@ -31,6 +31,14 @@ function memoryStorage() {
 }
 
 describe("resumable book job client", () => {
+  it("rechecks status after a dropped advance response and does not retry an uncertain paid call", async () => {
+    const status = vi.fn().mockResolvedValueOnce({ jobId: job.jobId, stage: "reading_source", recoverable: false })
+      .mockResolvedValueOnce({ jobId: job.jobId, stage: "interrupted", recoverable: true });
+    const advance = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    expect(await driveBookJob({ job, client: { status, advance, acknowledge: vi.fn() }, signal: new AbortController().signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(), sleep: vi.fn(async () => undefined) })).toBe("paused");
+    expect(status).toHaveBeenCalledTimes(2);
+    expect(advance).toHaveBeenCalledOnce();
+  });
   it("advances ready batches while later pages are still preparing without duplicate uploads", async () => {
     const controller = new AbortController();
     let release!: () => void;

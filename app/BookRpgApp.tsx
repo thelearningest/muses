@@ -18,7 +18,6 @@ import { isGamePackage, type GamePackage } from "./game-package";
 import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
 
 const LIBRARY_KEY = "design-book-rpg-library:v1";
-const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? (process.env.NODE_ENV === "development" ? "1x00000000000000000000AA" : "");
 
 const PIPELINE_STAGES: Array<{ stage: PublicBookJobStage; label: string }> = [
   { stage: "uploading", label: "Secure upload" },
@@ -65,16 +64,16 @@ function messageFor(error: unknown): string {
   return messages[error.code] ?? error.message;
 }
 
-function Turnstile({ onToken }: { onToken(token: string): void }) {
+function Turnstile({ onToken, siteKey }: { onToken(token: string): void; siteKey: string }) {
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!TURNSTILE_SITE_KEY || !container.current) return;
+    if (!siteKey || !container.current) return;
     let widgetId = "";
     let cancelled = false;
     const render = () => {
       if (cancelled || widgetId || !container.current || !window.turnstile) return;
       widgetId = window.turnstile.render(container.current, {
-        sitekey: TURNSTILE_SITE_KEY,
+        sitekey: siteKey,
         callback: onToken,
         "expired-callback": () => onToken(""),
         "error-callback": () => onToken(""),
@@ -96,8 +95,8 @@ function Turnstile({ onToken }: { onToken(token: string): void }) {
       cancelled = true;
       if (widgetId) window.turnstile?.remove(widgetId);
     };
-  }, [onToken]);
-  if (!TURNSTILE_SITE_KEY) return <p className="challenge-warning">Verification is not configured. Generation is unavailable.</p>;
+  }, [onToken, siteKey]);
+  if (!siteKey) return <p className="challenge-warning">Verification is not configured. Generation is unavailable.</p>;
   return <div className="turnstile-field" ref={container} aria-label="Human verification" />;
 }
 
@@ -130,7 +129,7 @@ function JobProgress({ job, status, onRetry, onCancel }: { job: ResumableBookJob
   );
 }
 
-export function BookRpgApp() {
+export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: string } = {}) {
   const [games, setGames] = useState<GamePackage[]>([]);
   const [selected, setSelected] = useState<GamePackage | "example" | null>(null);
   const [hydrated, setHydrated] = useState(false);
@@ -288,7 +287,7 @@ export function BookRpgApp() {
               <form onSubmit={createGame}>
                 <label className="file-field"><span>PDF book</span><input ref={fileRef} type="file" accept="application/pdf,.pdf" required /><small>Scanned or text PDF · maximum 50 MB and 300 pages</small></label>
                 <label className="rights-field"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} required /><span>I own this book or have permission to use it.</span></label>
-                <Turnstile onToken={setTurnstileToken} />
+                <Turnstile onToken={setTurnstileToken} siteKey={turnstileSiteKey} />
                 <button className="button button-primary" type="submit" disabled={!hydrated || !rightsConfirmed || !turnstileToken || isStarting}>{isStarting ? "Securing your upload…" : "Create my learning game"}<span aria-hidden="true">→</span></button>
               </form>
               <p className="generation-note">Limit: 5 attempts per browser or network in any 24 hours; 20 jobs site-wide each UTC day.</p>

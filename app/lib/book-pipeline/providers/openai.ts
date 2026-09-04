@@ -1,3 +1,4 @@
+import { EventSourceParserStream } from "eventsource-parser/stream";
 import type { ReasoningEffort } from "../config";
 import type { VisualCallBudget } from "../operation-repository";
 
@@ -62,15 +63,46 @@ async function paidRequest(fetcher: Fetcher, url: string, apiKey: string, payloa
   let response: Response;
   try {
     response = await fetcher(url, { method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, signal: AbortSignal.timeout(90_000), body });
-  } catch { throw new OpenAiIndeterminateRequestError(); }
-  if (response.status === 408 || response.status >= 500) throw new OpenAiIndeterminateRequestError();
-  if (!response.ok) throw new OpenAiRejectedRequestError(response.status);
+  } catch {
+    console.warn("OpenAI request failed", { category: "transport" });
+    throw new OpenAiIndeterminateRequestError();
+  }
+  if (!response.ok) {
+    // Provider IDs and status only: never log keys, source text, images or bodies.
+    console.warn("OpenAI request failed", { category: "http", status: response.status, requestId: response.headers.get("x-request-id") });
+    if (response.status === 408 || response.status >= 500) throw new OpenAiIndeterminateRequestError();
+    throw new OpenAiRejectedRequestError(response.status);
+  }
   return response;
 }
 
 async function responseObject(response: Response): Promise<Record<string, unknown>> {
   let value: unknown;
-  try { value = await response.json(); } catch { throw new OpenAiIndeterminateRequestError(); }
+  try {
+    if (response.headers.get("content-type")?.includes("text/event-stream")) {
+      if (!response.body) throw new OpenAiIndeterminateRequestError();
+      const reader = response.body.pipeThrough(new TextDecoderStream())
+        .pipeThrough(new EventSourceParserStream({ onError: "terminate", maxBufferSize: 2_000_000 })).getReader();
+      try {
+        while (true) {
+          const event = await reader.read();
+          if (event.done) throw new OpenAiIndeterminateRequestError();
+          if (event.value.data === "[DONE]") continue;
+          const message = JSON.parse(event.value.data);
+          // Early headers free a Workers connection slot. Only the complete
+          // terminal response is accepted; deltas never become durable output.
+          if (["response.completed", "response.incomplete", "response.failed"].includes(message.type)) {
+            value = message.response;
+            break;
+          }
+          if (message.type === "error") throw new OpenAiIndeterminateRequestError();
+        }
+      } finally { await reader.cancel().catch(() => {}); }
+    } else value = await response.json();
+  } catch {
+    console.warn("OpenAI request failed", { category: "response_json", requestId: response.headers.get("x-request-id") });
+    throw new OpenAiIndeterminateRequestError();
+  }
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new OpenAiUnusableResultError();
   return value as Record<string, unknown>;
 }
@@ -117,6 +149,7 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
     const response = await paidRequest(this.fetcher, RESPONSES_URL, this.apiKey, {
       model: input.model,
       store: false,
+      stream: true,
       reasoning: { effort: input.reasoningEffort },
       instructions: input.instructions,
       input: input.images?.length ? [{ role: "user", content: [
@@ -138,11 +171,17 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
       },
     });
     const value = await responseObject(response);
-    if (value.status !== "completed" || typeof value.id !== "string" || !value.id) throw new OpenAiUnusableResultError();
+    if (value.status !== "completed" || typeof value.id !== "string" || !value.id) {
+      const details = value.incomplete_details as { reason?: unknown } | undefined;
+      console.warn("OpenAI request failed", { category: "unusable_response", requestId: response.headers.get("x-request-id"),
+        status: ["completed", "incomplete", "failed", "cancelled", "queued", "in_progress"].includes(String(value.status)) ? value.status : "unknown",
+        reason: details?.reason === "max_output_tokens" || details?.reason === "content_filter" ? details.reason : "unknown" });
+      throw new OpenAiUnusableResultError();
+    }
     const text = outputText(value);
-    if (!text) throw new OpenAiUnusableResultError();
+    if (!text) { console.warn("OpenAI request failed", { category: "missing_output", requestId: response.headers.get("x-request-id") }); throw new OpenAiUnusableResultError(); }
     let data: T;
-    try { data = JSON.parse(text) as T; } catch { throw new OpenAiUnusableResultError(); }
+    try { data = JSON.parse(text) as T; } catch { console.warn("OpenAI request failed", { category: "output_json", requestId: response.headers.get("x-request-id") }); throw new OpenAiUnusableResultError(); }
     const usage = (value.usage ?? {}) as Record<string, unknown>;
     const details = (usage.input_tokens_details ?? {}) as Record<string, unknown>;
     const counts = [usage.input_tokens, usage.output_tokens, usage.total_tokens];

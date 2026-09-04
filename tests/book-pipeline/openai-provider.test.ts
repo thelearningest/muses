@@ -5,6 +5,23 @@ const request = { model: "gpt-5.6-luna", reasoningEffort: "none" as const, schem
 const valid = { id: "resp_test", status: "completed", output_text: '{"ok":true}', usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 } };
 
 describe("paid provider failure boundaries", () => {
+  it("consumes fragmented streaming events and uses only terminal output and usage", async () => {
+    const wire = `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "ignore" })}\n\ndata: ${JSON.stringify({ type: "response.completed", response: valid })}\n\n`;
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body)).stream).toBe(true);
+      return new Response(new ReadableStream({ start(controller) {
+        for (let i = 0; i < wire.length; i += 7) controller.enqueue(new TextEncoder().encode(wire.slice(i, i + 7)));
+        controller.close();
+      } }), { headers: { "content-type": "text/event-stream" } });
+    });
+    expect(await new OpenAiResponsesProvider("test", fetcher).generateStructured(request)).toMatchObject({ data: { ok: true }, usage: { totalTokens: 12 } });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("retains the reservation when a stream ends without a completed response", async () => {
+    const fetcher = vi.fn(async () => new Response('data: {"type":"response.output_text.delta","delta":"partial"}\n\n', { headers: { "content-type": "text/event-stream" } }));
+    await expect(new OpenAiResponsesProvider("test", fetcher).generateStructured(request)).rejects.toBeInstanceOf(OpenAiIndeterminateRequestError);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it.each([
     ["incomplete output", { ...valid, status: "incomplete", incomplete_details: { reason: "max_output_tokens" } }],
     ["refusal", { ...valid, output_text: undefined, output: [{ type: "message", content: [{ type: "refusal", refusal: "Cannot comply" }] }] }],

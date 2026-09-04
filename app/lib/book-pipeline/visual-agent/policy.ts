@@ -12,7 +12,7 @@ export function inspectionPool(book: CanonicalBook, cards: EvidenceCard[], ceili
   for (let i = 0; i < slots; i++) selected.push(remaining[Math.min(remaining.length - 1, Math.floor((i + 0.5) * remaining.length / slots))].index);
   return selected;
 }
-export const appeal = (candidate: Candidate) => candidate.review ? candidate.review.scores.reduce((sum, n) => sum + n, 0) / 5 : 0;
+export const appeal = (candidate: Candidate) => candidate.extractionAppeal !== undefined ? candidate.extractionAppeal * 4 : candidate.review ? candidate.review.scores.reduce((sum, n) => sum + n, 0) / 5 : 0;
 export function rankedCandidates(candidates: Candidate[], comparisonOrder: string[] = []): Candidate[] {
   let remaining = candidates.filter((c) => c.verdict && c.verdict.disposition !== "rejected" && appeal(c) >= 2.5);
   const selected: Candidate[] = [];
