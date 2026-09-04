@@ -2,12 +2,12 @@ import { GAME_CONTENT_SCHEMA, parseGameContent, type GameContent } from "../../g
 import type { BookMap, QuestEvidenceContract } from "./contracts";
 import type { ReasoningEffort } from "./config";
 import type { BookJobRepository } from "./job-repository";
-import { OpenAiIndeterminateRequestError, type StructuredOutputProvider } from "./providers/openai";
+import { OpenAiIndeterminateRequestError, type StructuredOutputProvider, type InputImage } from "./providers/openai";
 
 export const GAME_GENERATION_INSTRUCTIONS = `Create an original, source-grounded browser learning RPG from only the supplied book map and quest evidence contracts.
 Create one quest per contract, in the supplied sequence (four to nine total). Each quest follows inspect, diagnose, repair, reward. Make players apply the central claim through the permitted player actions. Each diagnosis and repair has exactly three choices and exactly one correct answer. Wrong-choice feedback explains the misconception.
 Use direct second-person language, concrete nouns, concise practical stakes, and original expression. Do not quote source excerpts. Use only supplied evidence; never invent citations or claims. Convert zero-based evidence pages to one-based source anchors.
-Create a distinct visual brief for every quest and include at least one 3d visual. Return only the strict structured output.`;
+Create a distinct visual brief for every quest and include at least one 3d visual. Verified visual annotations are private source references: use their supported relationships to design original diagrams and interactions. Respect every listed limitation. Reference-only annotations cannot be the sole basis of a scored answer. Do not copy the book's artwork or invent details from a visual description. The browser engine renders your structured game content; do not output application code or image URLs. Return only the strict structured output.`;
 
 export type GenerationInput = {
   book: { title: string; thesis: string; learningArc: string[] };
@@ -62,6 +62,7 @@ export async function generateGameStage(input: {
   bookMap: BookMap;
   contracts: QuestEvidenceContract[];
   provider: StructuredOutputProvider;
+  images?: InputImage[];
   repository: Pick<BookJobRepository, "commitStage" | "markRecoverable" | "appendOpenAiRequestId"> & Partial<Pick<BookJobRepository, "reserveProviderCost" | "reconcileProviderCost">>;
   store: { putJson(jobId: string, path: string, value: unknown, expiresAt: number): Promise<void> };
   config: { model: string; reasoningEffort: ReasoningEffort; reserveCostUnits?: number; maxCostUnits?: number };
@@ -83,6 +84,7 @@ export async function generateGameStage(input: {
       instructions: GAME_GENERATION_INSTRUCTIONS,
       input: JSON.stringify(boundedInput),
       safetyIdentifier: input.job.identityHash,
+      images: input.images,
     });
     if (input.config.reserveCostUnits && input.repository.reconcileProviderCost) {
       await input.repository.reconcileProviderCost(input.job.id, input.config.reserveCostUnits, Math.max(1, Math.ceil(response.usage.totalTokens / 1_000)), input.now);

@@ -1,5 +1,8 @@
 import { isGamePackage, type GamePackage } from "./game-package";
 import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
+import type { RenderRequest } from "./lib/book-pipeline/visual-agent/schema";
+
+export type BookJobAdvanceResult = { outcome: string; completedBatches?: number; totalBatches?: number; verifiedQuests?: number; totalQuests?: number; renderRequests?: RenderRequest[]; sourceFingerprint?: string };
 
 export const RESUMABLE_JOB_KEY = "playable-books-active-job:v1";
 export const BROWSER_IDENTITY_KEY = "playable-books-browser-identity:v1";
@@ -86,8 +89,12 @@ export class BookJobClient {
     return parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}`, { headers: this.headers(job) }));
   }
 
-  async advance(job: ResumableBookJob): Promise<{ outcome: string; completedBatches?: number; totalBatches?: number; verifiedQuests?: number; totalQuests?: number }> {
-    return parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/advance`, { method: "POST", headers: this.headers(job, true), body: "{}" }));
+  async advance(job: ResumableBookJob, retryConfirmed = false): Promise<BookJobAdvanceResult> {
+    return parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/advance`, { method: "POST", headers: this.headers(job, true), body: JSON.stringify({ retryConfirmed }) }));
+  }
+
+  async uploadVisualAsset(job: ResumableBookJob, asset: unknown): Promise<void> {
+    await parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/visual-assets`, { method: "PUT", headers: this.headers(job, true), body: JSON.stringify(asset) }));
   }
 
   async acknowledge(job: ResumableBookJob): Promise<void> {
@@ -134,6 +141,7 @@ export async function driveBookJob(input: {
   clear(): void;
   sleep?(milliseconds: number, signal: AbortSignal): Promise<void>;
   now?(): number;
+  renderAssets?(requests: RenderRequest[], sourceFingerprint: string): Promise<void>;
 }): Promise<"complete" | "paused" | "cleared" | "aborted"> {
   const now = input.now ?? Date.now;
   const sleep = input.sleep ?? ((milliseconds, signal) => new Promise<void>((resolve) => {
@@ -151,7 +159,13 @@ export async function driveBookJob(input: {
     }
     if (action === "pause") return "paused";
     if (action === "clear") { input.clear(); return "cleared"; }
-    if (action === "advance") { await input.client.advance(input.job); lastAdvanceAt = now(); }
+    if (action === "advance") {
+      const advanced = await input.client.advance(input.job); lastAdvanceAt = now();
+      if (advanced.outcome === "awaiting_assets") {
+        if (!input.renderAssets || !advanced.renderRequests || !advanced.sourceFingerprint) throw new BookJobClientError("source_file_needed", "Select the same PDF to continue inspecting its images.", 409);
+        await input.renderAssets(advanced.renderRequests, advanced.sourceFingerprint);
+      }
+    }
     await sleep(status.stage === "waiting_for_ocr" ? 5_000 : 1_200, input.signal);
   }
   return "aborted";

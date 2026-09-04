@@ -35,6 +35,7 @@ export type R2ObjectMetadata = {
 
 export type R2GetResult = {
   key: string;
+  etag?: string;
   customMetadata?: Record<string, string>;
   body?: ReadableStream<Uint8Array>;
   arrayBuffer(): Promise<ArrayBuffer>;

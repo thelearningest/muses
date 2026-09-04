@@ -19,6 +19,8 @@ import {
 import { advanceVisualStage, MistralVisualAnnotationProvider } from "@/app/lib/book-pipeline/visual-stage";
 import { verifyNextQuestStage } from "@/app/lib/book-pipeline/verification-stage";
 import type { GameContent } from "@/app/game-package";
+import { runVisualStage } from "@/app/lib/book-pipeline/visual-agent/stage";
+import { questVisualImages, VisualQuestProvider } from "@/app/lib/book-pipeline/visual-agent/quest-provider";
 
 type Context = { params: Promise<{ jobId: string }> };
 
@@ -54,7 +56,21 @@ export async function POST(request: Request, context: Context) {
     if (!job || job.expiresAt <= now) {
       return Response.json({ error: { code: "job_not_found" } }, { status: 404 });
     }
+    let optionText = ""; let optionBytes = 0;
+    const optionReader = request.body?.getReader();
+    if (optionReader) {
+      const decoder = new TextDecoder();
+      while (true) {
+        const chunk = await optionReader.read(); if (chunk.done) break;
+        optionBytes += chunk.value.length;
+        if (optionBytes > 1024) { await optionReader.cancel(); return Response.json({ error: { code: "request_too_large" } }, { status: 413 }); }
+        optionText += decoder.decode(chunk.value, { stream: true });
+      }
+      optionText += decoder.decode();
+    }
+    const retryConfirmed = optionText ? JSON.parse(optionText)?.retryConfirmed === true : false;
     if (job.status === "failed_recoverable" || job.status === "manual_retry_required") {
+      if (job.status === "manual_retry_required" && !retryConfirmed) return Response.json({ error: { code: "manual_retry_required", message: "Retry explicitly: the previous request may have been charged." } }, { status: 409 });
       await repository.resumeRecoverable(job.id, capabilityHash, now);
       job = await repository.getAuthorizedJob(jobId, capabilityHash);
       if (!job) return Response.json({ error: { code: "job_not_found" } }, { status: 404 });
@@ -107,6 +123,16 @@ export async function POST(request: Request, context: Context) {
     if (job.status === "annotating_visuals") {
       const canonical = await store.getJson<CanonicalBook>(job.id, "canonical-book.json");
       if (!canonical) return Response.json({ error: { code: "canonical_book_missing" } }, { status: 409 });
+      if (env.BOOK_VISUAL_PROVIDER === "luna") {
+        const bookMap = await store.getJson<BookMap>(job.id, "book-map.json");
+        const result = await runVisualStage({ job, book: canonical, cards: await loadEvidence(store, job.id), store, repository,
+          provider: new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")), maxPages: config.maxVisualPages,
+          config: { model: "gpt-5.6-luna", plannedQuests: Math.min(9, bookMap?.proposedQuestConceptIds.length ?? 9),
+            maxMicros: Number(env.BOOK_VISUAL_MAX_USD) * 1_000_000,
+            inputUsdPerMillion: Number(env.BOOK_VISUAL_INPUT_USD_PER_MILLION), outputUsdPerMillion: Number(env.BOOK_VISUAL_OUTPUT_USD_PER_MILLION) },
+          maxCostUnits: config.maxProviderCostUnitsPerJob, now, retryConfirmed });
+        return Response.json(result, { status: result.outcome === "interrupted" ? 409 : 200, headers: { "cache-control": "no-store" } });
+      }
       const providerToken = await createPurposeToken(
         { jobId, purpose: "ocr-source", expiresAt: now + 900 },
         required(env.BOOK_PROVIDER_URL_HMAC_KEY, "BOOK_PROVIDER_URL_HMAC_KEY"),
@@ -156,6 +182,7 @@ export async function POST(request: Request, context: Context) {
         job,
         bookMap,
         contracts: evidence.contracts,
+        images: await questVisualImages(store, job.id, evidence.contracts),
         provider: new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")),
         repository,
         store,
@@ -179,7 +206,9 @@ export async function POST(request: Request, context: Context) {
         job,
         game: draft.game,
         contracts: evidence.contracts,
-        provider: new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")),
+        provider: new VisualQuestProvider(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")), store, job,
+          { model: "gpt-5.6-luna", plannedQuests: 0, maxMicros: Number(env.BOOK_VISUAL_MAX_USD) * 1_000_000,
+            inputUsdPerMillion: Number(env.BOOK_VISUAL_INPUT_USD_PER_MILLION), outputUsdPerMillion: Number(env.BOOK_VISUAL_OUTPUT_USD_PER_MILLION) }),
         repository,
         store,
         config: {

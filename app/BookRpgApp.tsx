@@ -143,6 +143,7 @@ export function BookRpgApp() {
   const [error, setError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const clientRef = useRef(new BookJobClient());
+  const sourceFile = useRef<File | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,6 +164,17 @@ export function BookRpgApp() {
       job,
       client: clientRef.current,
       signal: controller.signal,
+      renderAssets: async (requests, fingerprint) => {
+        if (!sourceFile.current) throw new Error("Select the same PDF below to continue inspecting its images.");
+        const { createVisualPageRenderer } = await import("./visual-page-renderer");
+        const renderer = await createVisualPageRenderer(sourceFile.current);
+        try {
+          for (const request of requests) {
+            if (controller.signal.aborted) return;
+            await clientRef.current.uploadVisualAsset(job, await renderer.render(request, fingerprint));
+          }
+        } finally { await renderer.destroy(); }
+      },
       onStatus: (status) => {
         setJobStatus(status);
         saveResumableJob(window.localStorage, { ...job, stage: status.stage });
@@ -193,6 +205,7 @@ export function BookRpgApp() {
     event.preventDefault();
     const file = fileRef.current?.files?.[0];
     if (!file) { setError("Choose a PDF book to continue."); return; }
+    sourceFile.current = file;
     if (!turnstileToken) { setError("Complete the verification challenge first."); return; }
     setIsStarting(true);
     setError("");
@@ -231,7 +244,8 @@ export function BookRpgApp() {
     if (!activeJob) return;
     setError("");
     try {
-      await clientRef.current.advance(activeJob);
+      if (jobStatus?.error?.code === "manual_retry_required" && !window.confirm("The previous model request may already have been charged. Retry it once within the remaining budget?")) return;
+      await clientRef.current.advance(activeJob, true);
       setJobStatus(null);
       setDriveVersion((value) => value + 1);
     } catch (retryError) { setError(messageFor(retryError)); }
@@ -262,6 +276,7 @@ export function BookRpgApp() {
               <p className="privacy-note">Your PDF is processed temporarily by Mistral and OpenAI. Recovery files are kept for no more than 24 hours, then removed. Finished games stay only on this device.</p>
             </>
           )}
+          {activeJob && <label className="file-field"><span>Resume image inspection with the same PDF</span><input type="file" accept="application/pdf,.pdf" onChange={(event) => { sourceFile.current = event.target.files?.[0] ?? null; if (sourceFile.current) { setError(""); setDriveVersion((v) => v + 1); } }} /><small>Keep this page open while images are being inspected. Reselecting the PDF does not start a new paid job.</small></label>}
           <p className="form-error" role="alert" aria-live="assertive">{error}</p>
         </section>
         <section className="game-library" aria-labelledby="library-title">

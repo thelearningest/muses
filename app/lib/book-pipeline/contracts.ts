@@ -243,6 +243,7 @@ export type QuestEvidenceContract = {
     visualReferenceId: string;
     description: string;
     source: SourceReference;
+    visualAgent?: { candidateId: string; revision: number; disposition: "quiz_ready" | "reference_only" | "rejected"; limitations: string[] };
   }>;
   confidence: number;
   missingEvidence: QuestEvidenceMissingField[];

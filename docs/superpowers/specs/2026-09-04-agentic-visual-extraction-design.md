@@ -1,6 +1,6 @@
 # Agentic Visual Extraction for PDF-to-RPG
 
-Status: design approved in conversation; written specification awaiting review. No runtime implementation or new model benchmark is represented by this document.
+Status: design and written specification approved; implementation and six-page live visual evaluation completed locally on 2026-09-04. Public enablement and a live website end-to-end run remain pending. See `../../evaluation/2026-09-04-agentic-visual-extraction.md` for measured results and implementation differences.
 
 ## Goal and scope
 
@@ -244,7 +244,7 @@ Acceptance requires passing deterministic tests, no unsupported accepted answers
 3. Connect browser rendering and temporary assets to `annotating_visuals`, then pass verified evidence into generation and final question verification.
 4. Validate the complete website path before enabling the new provider mode. Preserve the existing path behind configuration during rollout; do not claim that Mistral OCR has been removed.
 
-No model calls, source uploads, deployment, or remote push are performed by writing this specification. Implementation planning follows written-spec review.
+The original specification itself made no provider calls or deployment changes. The subsequently approved implementation includes an opt-in local evaluation; its source crops and provider responses remain ignored, private workspace artifacts.
 
 ## Sources and implementation choices
 

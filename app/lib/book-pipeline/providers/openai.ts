@@ -7,8 +7,10 @@ export type StructuredResponse<T> = {
   responseId: string;
   requestId?: string;
   data: T;
-  usage: { inputTokens: number; outputTokens: number; totalTokens: number };
+  usage: { inputTokens: number; outputTokens: number; totalTokens: number; cachedInputTokens?: number; cacheWriteTokens?: number };
 };
+
+export type InputImage = { imageUrl: string; detail: "low" | "high"; label: string; width?: number; height?: number };
 
 export interface StructuredOutputProvider {
   generateStructured<T>(input: {
@@ -19,6 +21,8 @@ export interface StructuredOutputProvider {
     instructions: string;
     input: string;
     safetyIdentifier: string;
+    images?: InputImage[];
+    maxOutputTokens?: number;
   }): Promise<StructuredResponse<T>>;
 }
 
@@ -66,7 +70,10 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
     instructions: string;
     input: string;
     safetyIdentifier: string;
+    images?: InputImage[];
+    maxOutputTokens?: number;
   }): Promise<StructuredResponse<T>> {
+    if (input.maxOutputTokens !== undefined && (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens < 1 || input.maxOutputTokens > 16000)) throw new TypeError("Invalid output limit");
     let response: Response;
     try {
       response = await this.fetcher(RESPONSES_URL, {
@@ -75,12 +82,20 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
           authorization: `Bearer ${this.apiKey}`,
           "content-type": "application/json",
         },
+        signal: AbortSignal.timeout(90_000),
         body: JSON.stringify({
           model: input.model,
           store: false,
           reasoning: { effort: input.reasoningEffort },
           instructions: input.instructions,
-          input: input.input,
+          input: input.images?.length ? [{ role: "user", content: [
+            { type: "input_text", text: input.input },
+            ...input.images.flatMap((image) => [
+              { type: "input_text", text: image.label },
+              { type: "input_image", image_url: image.imageUrl, detail: image.detail },
+            ]),
+          ] }] : input.input,
+          ...(input.maxOutputTokens ? { max_output_tokens: input.maxOutputTokens } : {}),
           safety_identifier: input.safetyIdentifier.slice(0, 64),
           text: {
             format: {
@@ -93,15 +108,18 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
         }),
       });
     } catch (error) {
-      if (error instanceof TypeError) throw new OpenAiIndeterminateRequestError();
+      if (error instanceof TypeError || (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name))) throw new OpenAiIndeterminateRequestError();
       throw error;
     }
     if (!response.ok) throw new Error(`OpenAI request failed with status ${response.status}`);
-    const value = (await response.json()) as Record<string, unknown>;
+    let value: Record<string, unknown>;
+    try { value = (await response.json()) as Record<string, unknown>; }
+    catch { throw new OpenAiIndeterminateRequestError(); }
     if (value.status !== "completed") throw new Error("OpenAI response was incomplete");
     const text = outputText(value);
     if (!text) throw new Error("OpenAI response contained no structured output");
     const usage = (value.usage ?? {}) as Record<string, unknown>;
+    const details = (usage.input_tokens_details ?? {}) as Record<string, unknown>;
     return {
       responseId: String(value.id ?? ""),
       requestId: response.headers.get("x-request-id") ?? undefined,
@@ -110,6 +128,8 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
         inputTokens: Number(usage.input_tokens ?? 0),
         outputTokens: Number(usage.output_tokens ?? 0),
         totalTokens: Number(usage.total_tokens ?? 0),
+        cachedInputTokens: Number(details.cached_tokens ?? 0),
+        cacheWriteTokens: Number(details.cache_write_tokens ?? details.cache_creation_tokens ?? 0),
       },
     };
   }

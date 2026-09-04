@@ -70,6 +70,29 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 Unsafe values are rejected back to conservative defaults. Do not expose server secrets through `NEXT_PUBLIC_*` variables.
 
+### Agentic Luna visual selection
+
+The optional visual pipeline uses versioned scout, curator, verifier, and selector prompts in `app/lib/book-pipeline/visual-agent/`. It inspects a maximum 12-page sample, requests actual crops, permits one crop refinement per candidate, and selects up to six appeal-first references. Evidence links, crop bounds, image sizes, duplicate IDs, and budgets are validated in code.
+
+Enable it only after configuring an explicit visual budget and current Luna prices:
+
+```text
+BOOK_VISUAL_PROVIDER=luna
+BOOK_VISUAL_MAX_USD=0.15
+BOOK_VISUAL_INPUT_USD_PER_MILLION=0.20
+BOOK_VISUAL_OUTPUT_USD_PER_MILLION=1.20
+```
+
+These prices are the local benchmark baseline, not a promise of future billing rates. The module conservatively estimates all input at the cache-write rate; it also enforces 40 calls, 120,000 input tokens, and 40,000 output tokens. Its dollar ledger is separate from the older global admission-unit counter. Missing/nonpositive pricing fails closed. Leaving `BOOK_VISUAL_PROVIDER` unset preserves the existing Mistral annotation path.
+
+The browser uses PDF.js to render requested pages and uploads private, job-scoped PNGs. Keep the page open for image rendering; after refreshing, reselect the same PDF to resume. This does not create another paid job. Assets are limited to 768 KiB of PNG data each so their base64 storage also fits the aggregate allocation. Source crops are never added to the permanent game or public asset folder.
+
+Sol remains the RPG generator and receives compact evidence plus the selected relevant crops. Final visual-dependent quiz verification uses Luna on the actual generated choices and current crops. Reference-only images cannot be the sole evidence for a scored answer. Production OCR still uses Mistral; this feature does not replace the entire OCR stage.
+
+Local, paid evaluation is opt-in (`RUN_LUNA_VISUAL_BENCHMARK=1`) and runs only `tests/manual/luna-visual.live.test.ts`. It uses the existing six Luna extracts and supplied local PDF, persists every request/result under ignored `outputs/luna-visual-agent-v1/`, and refuses to automatically repeat an uncertain request. Normal unit tests skip this evaluation. The default smoke-test ceiling is $0.15; no whole-book recall or completed RPG is implied by that test.
+
+An extraction call with an uncertain outcome requires an explicit confirmed retry, at most once for that step; its previous maximum charge remains counted. An uncertain final visual-verification request currently stays paused for operator reconciliation rather than risking another charge. Do not clear its attempt marker blindly.
+
 ## Validation
 
 ```bash

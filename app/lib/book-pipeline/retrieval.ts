@@ -19,6 +19,8 @@ export type StoredVisualAnnotation = {
   description: string;
   role: string;
   confidence: number;
+  canonicalBlockIds?: string[];
+  visualAgent?: QuestEvidenceContract["visualAnnotations"][number]["visualAgent"];
 };
 
 function terms(value: string): string[] {
@@ -103,7 +105,10 @@ export function buildQuestContract(input: {
   if (!cards.some((card) => card.successfulExamples.length > 0)) missing.push("example");
   if (!cards.some((card) => card.failureModes.length > 0)) missing.push("failure_mode");
   const visualIds = new Set(cards.flatMap((card) => card.visualReferenceIds));
-  const visuals = input.visualAnnotations.filter((annotation) => visualIds.has(annotation.visualReferenceId));
+  const sourceBlocks = new Set(sources.flatMap((source) => source.canonicalBlockIds));
+  const visuals = input.visualAnnotations.filter((annotation) => annotation.visualAgent
+    ? annotation.visualAgent.disposition !== "rejected" && annotation.canonicalBlockIds?.some((id) => sourceBlocks.has(id))
+    : visualIds.has(annotation.visualReferenceId));
   if (visualIds.size > 0 && visuals.length === 0) missing.push("visual_evidence");
   return {
     id: `contract-${input.concept.id}`,
@@ -114,10 +119,11 @@ export function buildQuestContract(input: {
     visualAnnotations: visuals.map((annotation) => ({
       visualReferenceId: annotation.visualReferenceId,
       description: annotation.description,
+      ...(annotation.visualAgent ? { visualAgent: annotation.visualAgent } : {}),
       source: {
         pageStart: annotation.pageIndex,
         pageEnd: annotation.pageIndex,
-        canonicalBlockIds: cards.flatMap((card) => card.sources.flatMap((source) => source.canonicalBlockIds)).slice(0, 4),
+        canonicalBlockIds: annotation.canonicalBlockIds ?? cards.flatMap((card) => card.sources.filter((s) => annotation.pageIndex >= s.pageStart && annotation.pageIndex <= s.pageEnd).flatMap((s) => s.canonicalBlockIds)).slice(0, 4),
       },
     })),
     confidence: cards.length ? Math.round(cards.reduce((sum, card) => sum + card.confidence, 0) / cards.length * 1_000) / 1_000 : 0,

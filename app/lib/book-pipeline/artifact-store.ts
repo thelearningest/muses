@@ -26,6 +26,26 @@ function expiryMetadata(expiresAt: number): Record<string, string> {
 export class BookArtifactStore {
   constructor(private readonly bucket: R2BucketBinding) {}
 
+  async getJsonVersion<T>(jobId: string, path: string): Promise<{ value: T; etag: string } | null> {
+    const object = await this.bucket.get(artifactKey(jobId, path));
+    if (!object) return null;
+    if (!object.etag) throw new Error("Versioned artifact storage is required");
+    return { value: JSON.parse(await object.text()) as T, etag: object.etag };
+  }
+
+  async putJsonVersion(jobId: string, path: string, value: unknown, etag: string, expiresAt: number): Promise<boolean> {
+    return (await this.bucket.put(artifactKey(jobId, path), JSON.stringify(value), {
+      onlyIf: { etagMatches: etag }, httpMetadata: { contentType: "application/json" }, customMetadata: expiryMetadata(expiresAt),
+    })) !== null;
+  }
+
+  async putJsonIfAbsent(jobId: string, relativePath: string, value: unknown, expiresAt: number): Promise<boolean> {
+    const result = await this.bucket.put(artifactKey(jobId, relativePath), JSON.stringify(value), {
+      onlyIf: { etagDoesNotMatch: "*" }, httpMetadata: { contentType: "application/json" }, customMetadata: expiryMetadata(expiresAt),
+    });
+    return result !== null;
+  }
+
   async putSource(
     jobId: string,
     body: ReadableStream<Uint8Array>,

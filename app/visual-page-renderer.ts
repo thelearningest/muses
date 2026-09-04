@@ -1,0 +1,45 @@
+import { fingerprintFile } from "./book-job-client";
+import type { RenderRequest } from "./lib/book-pipeline/visual-agent/schema";
+
+export async function createVisualPageRenderer(file: File) {
+  const fingerprint = await fingerprintFile(file);
+  const pdfjs = await import("pdfjs-dist");
+  const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+  const loading = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+  const pdf = await loading.promise;
+  return {
+    fingerprint,
+    destroy: () => loading.destroy(),
+    async render(request: RenderRequest, sourceFingerprint: string) {
+      if (fingerprint !== sourceFingerprint) throw new Error("Select the same PDF used for this job.");
+      const page = await pdf.getPage(request.pageIndex + 1);
+      const viewport = page.getViewport({ scale: 1 });
+      const edge = request.kind === "thumbnail" ? 512 : request.box ? 4096 : 2048;
+      const scaled = page.getViewport({ scale: edge / Math.max(viewport.width, viewport.height) });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(scaled.width); canvas.height = Math.ceil(scaled.height);
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas unavailable");
+      const output = document.createElement("canvas");
+      try {
+        await page.render({ canvas, canvasContext: context, viewport: scaled }).promise;
+        const box = request.box ?? { x: 0, y: 0, width: 1, height: 1 };
+        const width = box.width * canvas.width, height = box.height * canvas.height;
+        let scale = Math.min(1, 2048 / Math.max(width, height));
+        if (request.kind === "preview") scale = Math.min(1, 360 / width, 240 / height);
+        let imageUrl = "";
+        // Resampling only; no generative alteration of the source artwork.
+        for (let attempt = 0; attempt < 5; attempt++) {
+          output.width = Math.max(1, Math.floor(width * scale)); output.height = Math.max(1, Math.floor(height * scale));
+          output.getContext("2d")!.drawImage(canvas, box.x * canvas.width, box.y * canvas.height, width, height, 0, 0, output.width, output.height);
+          imageUrl = output.toDataURL("image/png");
+          if ((imageUrl.length - 22) * 3 / 4 <= 768 * 1024) break;
+          scale *= 0.75;
+        }
+        if ((imageUrl.length - 22) * 3 / 4 > 768 * 1024) throw new Error("Page image exceeds the upload limit");
+        return { id: request.id, sourceFingerprint, imageUrl, width: output.width, height: output.height, rotation: scaled.rotation, renderer: `pdfjs-${pdfjs.version}` };
+      } finally { canvas.width = canvas.height = output.width = output.height = 0; page.cleanup(); }
+    },
+  };
+}
