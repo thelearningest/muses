@@ -14,10 +14,10 @@ import {
   type BookJobStatusResponse,
   type ResumableBookJob,
 } from "./book-job-client";
-import { isGamePackage, type GamePackage } from "./game-package";
+import { hasRequiredVisualQuests as hasPlayableVisuals, type GamePackage } from "./game-package";
+import { loadGameLibrary, saveLibraryGame, removeLibraryGame } from "./game-library";
 import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
 
-const LIBRARY_KEY = "design-book-rpg-library:v1";
 
 const PIPELINE_STAGES: Array<{ stage: PublicBookJobStage; label: string }> = [
   { stage: "uploading", label: "Uploading your book" },
@@ -43,12 +43,6 @@ declare global {
   }
 }
 
-function loadGames(): GamePackage[] {
-  try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(LIBRARY_KEY) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter(isGamePackage) : [];
-  } catch { return []; }
-}
 
 function messageFor(error: unknown): string {
   if (!(error instanceof BookJobClientError)) return error instanceof Error ? error.message : "The book could not be transformed.";
@@ -147,12 +141,12 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
 
   useEffect(() => {
     let cancelled = false;
-    queueMicrotask(() => {
+    void loadGameLibrary().then((saved) => {
       if (cancelled) return;
-      setGames(loadGames());
+      setGames(saved);
       setActiveJob(loadResumableJob(window.localStorage));
       setHydrated(true);
-    });
+    }).catch((error) => { if (!cancelled) setError(messageFor(error)); });
     return () => { cancelled = true; };
   }, []);
 
@@ -197,10 +191,10 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
         setJobStatus(status);
         saveResumableJob(window.localStorage, { ...job, stage: status.stage });
       },
-      saveGame: (game) => {
+      saveGame: async (game) => {
+        await saveLibraryGame(game);
         setGames((current) => {
           const next = [game, ...current.filter((item) => item.id !== game.id)];
-          window.localStorage.setItem(LIBRARY_KEY, JSON.stringify(next));
           return next;
         });
         setSelected(game);
@@ -215,9 +209,9 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     return () => controller.abort();
   }, [hydrated, activeJob, driveVersion]);
 
-  const saveGames = (next: GamePackage[]) => {
-    setGames(next);
-    window.localStorage.setItem(LIBRARY_KEY, JSON.stringify(next));
+  const removeGame = async (id: string) => {
+    try { await removeLibraryGame(id); setGames((current) => current.filter((item) => item.id !== id)); }
+    catch (error) { setError(messageFor(error)); }
   };
 
   const createGame = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -300,7 +294,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
         </section>
         <section className="game-library" aria-labelledby="library-title">
           <div className="library-section-heading"><div><h2 id="library-title">Your games</h2><p className="library-hint">{games.length ? "Saved in this browser. Pick a game to start or continue." : "Your games will appear here. Try the demo while you choose a book."}</p></div></div>
-          {games.map((game) => <article className="game-card" key={game.id}><div><span className="game-card-kicker">{game.quests.length} quests · {game.sourceTitle}</span><h3>{game.title}</h3><p>{game.subtitle}</p></div><div className="game-card-actions"><button className="button button-yellow" type="button" onClick={() => setSelected(game)}>Open game <span aria-hidden="true">→</span></button><button className="text-button" type="button" aria-label={`Remove ${game.title}`} onClick={() => { if (window.confirm(`Remove “${game.title}” from this device?`)) saveGames(games.filter((item) => item.id !== game.id)); }}>Remove</button></div></article>)}
+          {games.map((game) => <article className="game-card" key={game.id}><div><span className="game-card-kicker">{game.quests.length} quests · {game.sourceTitle}</span><h3>{game.title}</h3><p>{game.subtitle}</p>{!hasPlayableVisuals(game) && <p>This older game has no visual exercises. Upload the same PDF above to create a new visual version.</p>}</div><div className="game-card-actions"><button className="button button-yellow" type="button" disabled={!hasPlayableVisuals(game)} onClick={() => setSelected(game)}>Open game <span aria-hidden="true">→</span></button><button className="text-button" type="button" aria-label={`Remove ${game.title}`} onClick={() => { if (window.confirm(`Remove “${game.title}” from this device?`)) void removeGame(game.id); }}>Remove</button></div></article>)}
           <article className="game-card game-card-featured"><div><span className="game-card-kicker">Demo · 6 quests · No upload needed</span><h3>The City of Misfit Things</h3><p>Fix everyday objects that confuse people, from misleading doors to puzzling controls.</p></div><button className="button button-secondary" type="button" onClick={() => setSelected("example")}>Try the demo <span aria-hidden="true">→</span></button></article>
         </section>
       </div>

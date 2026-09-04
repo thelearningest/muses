@@ -18,7 +18,7 @@ export async function generateParallelGame(input: {
 }): Promise<StructuredResponse<GameContent>> {
   if (!input.provider.partition) throw new Error("Parallel generation requires durable partitions");
   const { content } = input;
-  if (content.questContracts.length < 4 || content.questContracts.length > 9) throw new Error("Invalid quest count");
+  if (content.questContracts.length !== 3) throw new Error("Three different visual quests are required");
   const common = { model: input.model, reasoningEffort: input.reasoningEffort, safetyIdentifier: input.identity };
   const world = await input.provider.generateStructured<{ title: string; subtitle: string; setting: string }>({
     ...common, schemaName: "rpg_world", schema: WORLD_SCHEMA, maxOutputTokens: 700,
@@ -29,8 +29,8 @@ export async function generateParallelGame(input: {
   const responses = await settleAll(content.questContracts.map(async (contract, index) => {
     const provider = input.provider.partition!(index);
     const response = await provider.generateStructured<unknown>({
-      ...common, schemaName: "rpg_quest", schema: QUEST_SCHEMA, maxOutputTokens: 2400,
-      instructions: `${input.instructions}\nFor THIS request return ONLY ONE quest for the supplied contract, not a whole game. Use id q${index + 1}, number ${index + 1}. Use the shared setting and its learning arc. ${index === 0 ? "This quest must use a 3d visual." : "Choose the visual mode most appropriate to this concept."} Keep prose concise but preserve a concrete scenario, diagnostic clues and explanatory feedback.`,
+      ...common, schemaName: "rpg_quest", schema: QUEST_SCHEMA, maxOutputTokens: 3200,
+      instructions: `${input.instructions}\nFor THIS request return ONLY ONE quest for the supplied contract, not a whole game. Use id q${index + 1}, number ${index + 1}. Use the shared setting. Inspect the attached image before writing the questions. Keep prose concise and do not reveal the correct observation before the learner answers.`,
       input: JSON.stringify({ world: world.data, book: content.book, concept: content.concepts.find((c) => c.id === contract.conceptId), evidenceContract: contract, questIndex: index }),
       images: input.questImages?.[index] ?? input.images,
     });

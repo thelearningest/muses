@@ -8,12 +8,12 @@ import { OpenAiIndeterminateRequestError, type StructuredOutputProvider, type In
 import { generateParallelGame } from "./parallel-generation";
 
 export const GAME_GENERATION_INSTRUCTIONS = `Create an original, source-grounded browser learning RPG from only the supplied book map and quest evidence contracts.
-Create one quest per contract, in the supplied sequence (four to nine total). Each quest follows inspect, diagnose, repair, reward. Make players apply the central claim through the permitted player actions. Each diagnosis and repair has exactly three choices and exactly one correct answer. Wrong-choice feedback explains the misconception.
+Create one visual quest per contract, in the supplied sequence (three quests total, each with a different image). Each quest follows inspect, diagnose, propose a change, reward. Make players apply the central claim to the actual attached image. Each diagnosis and repair has exactly three choices and exactly one correct answer. Wrong-choice feedback explains the visual misconception.
 Use direct second-person language, concrete nouns, concise practical stakes, and original expression. Do not quote source excerpts. Never invent citations or source claims.
 Write for a first-time player: explain who they are helping, the problem they can see, and what they need to do next. Keep story to two short sentences and objective to one concrete action. Keep titles short and choices easy to compare. Put fantasy flavor in the setting and characters; use plain language for instructions and feedback. Explain specialist terms when first needed. Avoid bureaucratic phrases such as field study, apprenticeship record, evidence contract, or study object in player-facing copy. Introduce fictional situations naturally with "Imagine" or "Your challenge" instead of the label "Original exercise".
 ${MODEL_EVIDENCE_RULES}
 ${GAME_RENDERER_RULES}
-Create a distinct visual brief for every quest and include at least one 3d visual. Verified visual annotations are private source references: use their supported relationships to design original diagrams and interactions. Respect every listed limitation. Reference-only annotations cannot be the sole basis of a scored answer. Do not copy the book's artwork or invent details from a visual description. The browser engine renders your structured game content; do not output application code or image URLs. Return only the strict structured output.`;
+Inspect the actual supplied images, not merely their descriptions. The server displays these exact images to the learner. They may be book illustrations or explicitly labeled AI-created practice designs. Never claim an AI-created example was printed in the book. The book supplies the principle; the visible image supplies the observations. Respect source limitations, but independently examine the pixels to ground observable relationships. Do not base answers on tiny captions or unverifiable counts. Return only the strict structured output.`;
 
 export type GenerationInput = {
   book: { title: string; thesis: string; learningArc: string[] };
@@ -22,7 +22,7 @@ export type GenerationInput = {
 };
 
 export function buildGenerationInput(bookMap: BookMap, contracts: QuestEvidenceContract[]): GenerationInput {
-  const selected = new Set(bookMap.proposedQuestConceptIds);
+  const selected = new Set(contracts.map((c) => c.conceptId));
   return {
     book: { title: bookMap.bookTitle ?? "Uploaded book", thesis: bookMap.thesis, learningArc: bookMap.learningArc },
     concepts: bookMap.concepts.filter((concept) => selected.has(concept.id)).map(({ id, name, summary }) => ({ id, name, summary })),
@@ -37,9 +37,8 @@ function normalized(value: string): string {
 export function validateGameAgainstContracts(game: GameContent, contracts: QuestEvidenceContract[]): string[] {
   const issues: string[] = [];
   if (game.quests.length !== contracts.length) issues.push("quest_count_mismatch");
-  const conceptNames = game.quests.map((quest) => normalized(quest.principle.name));
-  if (new Set(conceptNames).size !== conceptNames.length) issues.push("duplicate_concepts");
-  if (!game.quests.some((quest) => quest.visual?.mode === "3d")) issues.push("missing_3d_visual");
+  // A principle can be practiced in different visuals; image identity, not a
+  // shared principle label, determines whether quests meet the diversity floor.
   const visualSignatures = new Set<string>();
   game.quests.forEach((quest, index) => {
     issues.push(...questRendererIssues(quest).map((issue) => `quest_${index}:${issue}`));
@@ -110,6 +109,15 @@ export async function generateGameStage(input: {
     const game = parseGameContent(response.data);
     if (input.isActive && !await input.isActive()) return { outcome: "inactive" as const };
     if (!game) throw new Error("Generated game failed schema validation");
+    game.quests.forEach((quest, index) => {
+      const images = input.questImages?.[index] ?? (game.quests.length === 1 ? input.images : undefined);
+      if (!quest.visual || !images?.length || images.length > 2) throw new Error("Each quest needs its exact inspectable images");
+      quest.visual.sourceImages = images.map((image) => {
+        if (!image.width || !image.height || !/^data:image\/(png|jpeg);base64,/.test(image.imageUrl)) throw new Error("Invalid image attachment");
+        return { imageUrl: image.imageUrl, width: image.width, height: image.height, label: image.label };
+      });
+      if (quest.visual.regions?.some((r) => r.imageIndex >= images.length)) throw new Error("Region references a missing image");
+    });
     const issues = validateGameAgainstContracts(game, input.contracts);
     if (issues.length > 0) throw new Error(`Generated game failed deterministic validation: ${issues.join(",")}`);
     await input.store.putJson(input.job.id, "game-draft.json", {

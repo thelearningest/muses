@@ -1,7 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import type { Choice, GamePackage, Quest, VisualSpec } from "./game-package";
+import type { Choice, GamePackage, Quest } from "./game-package";
 
 const GateInspector3D = lazy(() =>
   import("./GateInspector3D").then((module) => ({ default: module.GateInspector3D })),
@@ -481,32 +481,6 @@ function rankForXP(xp: number, maxXp: number, generated: boolean) {
   return { level: 1, title: "Apprentice" };
 }
 
-function bookSpecificVisual(quest: Quest, index: number): VisualSpec {
-  const forms: Record<Quest["artifact"], VisualSpec["form"]> = {
-    gate: "portal",
-    switchboard: "network",
-    memory: "sequence",
-    constraints: "assembly",
-    console: "console",
-    kiosk: "display",
-  };
-  const correctRepair = quest.repairs.find((choice) => choice.correct);
-
-  return {
-    mode: index === 0 ? "3d" : "diagram",
-    form: forms[quest.artifact],
-    accent: (["red", "yellow", "green"] as const)[index % 3],
-    title: quest.title,
-    problemLabel: quest.clue,
-    repairLabel: correctRepair?.label ?? quest.principle.name,
-    elements: [
-      quest.observationTools[0] ?? "User",
-      quest.observationTools[1] ?? "Task",
-      quest.observationTools[2] ?? "Evidence",
-    ],
-  };
-}
-
 function isInteractiveTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   return Boolean(
@@ -565,7 +539,7 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
         </div>
         <figcaption id="artifact-caption">
           <span>{quest.gallery}</span>
-          <span>{repaired ? "After your fix" : revealed ? "Clues revealed" : "Before your fix"}</span>
+          <span>Design reference · image unchanged</span>
         </figcaption>
       </figure>
     );
@@ -810,10 +784,7 @@ function SoundToggle({
 
 export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void }) {
   const quests = useMemo(
-    () => game?.quests.map((quest, index) => ({
-      ...quest,
-      visual: quest.visual ?? bookSpecificVisual(quest, index),
-    })) ?? QUESTS,
+    () => game?.quests ?? QUESTS,
     [game],
   );
   const maxXp = useMemo(() => quests.reduce((total, quest) => total + quest.xp, 0), [quests]);
@@ -1204,7 +1175,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
                 {game?.subtitle ??
                   "Ordinary objects have begun misleading the city. Enter the museum after hours, repair six exhibits, and learn to see failure as evidence about design. As a Design Warden apprentice, you will observe what goes wrong, identify the cause, choose a repair, and see the result."}
               </p>
-              <p className="intro-howto">Inspect each scene, work out what’s wrong, then choose a fix. Earn XP and collect the key lessons in your journal.</p>
+              <p className="intro-howto">{game ? "Inspect real designs, answer visual questions, and explore possible changes." : "Inspect each scene, work out what’s wrong, then choose a fix."} Earn XP and collect the key lessons in your journal.</p>
               <div className="intro-facts" aria-label="Game details">
                 <span><strong>{String(quests.length).padStart(2, "0")}</strong> quests</span>
                 <span><strong>Self</strong> paced</span>
@@ -1245,7 +1216,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
               </div>
               <p className="source-note">
                 An independent learning experience inspired by concepts from
-                <em> {game?.sourceTitle ?? "The Design of Everyday Things"}</em>. All scenarios and artwork are original.
+                <em> {game?.sourceTitle ?? "The Design of Everyday Things"}</em>. {game ? "Practice with illustrations from your book or clearly labeled AI-created designs." : "All scenarios and artwork are original."}
                 Music: {" "}
                 <a
                   href="https://opengameart.org/content/unsolved-investigation"
@@ -1448,8 +1419,8 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
             <div className="stage-marker">
               <span>{phaseName}</span>
               <div aria-label={phaseName + " stage"}>
-                {["inspect", "diagnose", "repair", "reward"].map((phase, index) => {
-                  const currentIndex = ["inspect", "diagnose", "repair", "reward"].indexOf(progress.phase);
+                {["inspect", "diagnose", "repair", "reward"].map((phase, index, phases) => {
+                  const currentIndex = phases.indexOf(progress.phase);
                   return <span className={index <= currentIndex ? "is-active" : ""} key={phase} />;
                 })}
               </div>
@@ -1476,8 +1447,8 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
 
             {progress.phase === "diagnose" && (
               <div className="rail-section">
-                <span className="eyebrow">Choose an answer</span>
-                <h2>What is causing the problem?</h2>
+                <span className="eyebrow">Question 1 of 2 · Observe</span>
+                <h2>{quest.diagnosisQuestion ?? "What is causing the problem?"}</h2>
                 <div className="choice-list">
                   {quest.diagnosis.map((choice) => (
                     <button
@@ -1496,8 +1467,8 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
 
             {progress.phase === "repair" && (
               <div className="rail-section">
-                <span className="eyebrow">Choose one repair</span>
-                <h2>How would you fix it?</h2>
+                <span className="eyebrow">Question 2 of 2 · Apply</span>
+                <h2>{quest.repairQuestion ?? "How would you fix it?"}</h2>
                 <div className="choice-list">
                   {quest.repairs.map((choice) => (
                     <button

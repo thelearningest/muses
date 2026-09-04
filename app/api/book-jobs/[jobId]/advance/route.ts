@@ -21,13 +21,14 @@ import { verifyNextQuestStage } from "@/app/lib/book-pipeline/verification-stage
 import type { GameContent } from "@/app/game-package";
 import { runVisualStage } from "@/app/lib/book-pipeline/visual-agent/stage";
 import { prepareBatchReferences } from "@/app/lib/book-pipeline/visual-agent/batch-references";
-import { questVisualImages, VisualQuestProvider } from "@/app/lib/book-pipeline/visual-agent/quest-provider";
+import { VisualQuestProvider } from "@/app/lib/book-pipeline/visual-agent/quest-provider";
 import { advanceExtraction } from "@/app/lib/book-pipeline/extraction/stage";
 import { advanceBatchExtraction, BATCH_STATE_PATH, type BatchExtractionState } from "@/app/lib/book-pipeline/extraction/batch";
 import { lunaLimits } from "@/app/lib/book-pipeline/extraction/http";
 import { BookOperationRepository } from "@/app/lib/book-pipeline/operation-repository";
 import { durableStage } from "@/app/lib/book-pipeline/durable-stage";
 import { operationHash } from "@/app/lib/book-pipeline/paid-call-journal";
+import { prepareQuestImages } from "@/app/lib/book-pipeline/visual-agent/practice-image";
 
 type Context = { params: Promise<{ jobId: string }> };
 
@@ -243,19 +244,26 @@ export async function POST(request: Request, context: Context) {
         store.getJson<{ contracts: QuestEvidenceContract[] }>(job.id, "quest-evidence.json"),
       ]);
       if (!bookMap || !evidence) return Response.json({ error: { code: "pipeline_artifact_missing" } }, { status: 409 });
+      let questImages;
+      try {
+        questImages = await prepareQuestImages({ contracts: evidence.contracts, store, job, journal: durable!.journal, apiKey: required(env.OPENAI_API_KEY, "OPENAI_API_KEY") });
+      } catch {
+        await durable!.repository.markRecoverable(job.id, "generating_game", "manual_retry_required", "manual_retry_required", now);
+        return Response.json({ outcome: "interrupted" }, { status: 409, headers: { "cache-control": "no-store" } });
+      }
       const result = await generateGameStage({
         job,
         isActive: isStageActive,
         bookMap,
         contracts: evidence.contracts,
-        images: parallelQuests ? undefined : await questVisualImages(store, job.id, evidence.contracts),
-        questImages: parallelQuests ? await Promise.all(evidence.contracts.map((contract) => questVisualImages(store, job.id, [contract]))) : undefined,
+        images: parallelQuests ? undefined : questImages.flat(),
+        questImages,
         provider: durable!.journal.structured(openAi()),
         repository: durable!.repository,
         store,
         config: {
           model: config.generationModel,
-          reasoningEffort: parallelQuests ? "none" : config.generationReasoningEffort,
+          reasoningEffort: parallelQuests ? "low" : config.generationReasoningEffort,
           parallel: parallelQuests,
           reserveCostUnits: Math.max(config.mapCostReserveUnits, 4_000),
           maxCostUnits: config.maxProviderCostUnitsPerJob,
@@ -276,13 +284,13 @@ export async function POST(request: Request, context: Context) {
         game: draft.game,
         contracts: evidence.contracts,
         provider: new VisualQuestProvider(durable!.journal.structured(openAi()), store, job,
-          { model: "gpt-5.6-luna", plannedQuests: 0, ...lunaLimits(env, "BOOK_VISUAL") }, true),
+          { model: "gpt-5.6-sol", plannedQuests: 0, maxMicros: 2_000_000, inputUsdPerMillion: 5, outputUsdPerMillion: 20 }, true),
         repository: durable!.repository,
         store,
         config: {
           model: config.verificationModel,
           reasoningEffort: config.verificationReasoningEffort,
-          maxRepairAttempts: config.maxQuestRepairAttempts,
+          maxRepairAttempts: 1,
           parallel: parallelQuests,
           reserveCostUnits: config.mapCostReserveUnits,
           maxCostUnits: config.maxProviderCostUnitsPerJob,

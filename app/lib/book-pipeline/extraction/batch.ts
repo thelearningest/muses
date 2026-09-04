@@ -80,7 +80,7 @@ export function batchArtifacts(state: BatchExtractionState, filename: string, ba
   });
   validateEvidenceCards(cards, canonical);
   const bookMap = buildBookMap(canonical, cards);
-  if (bookMap.proposedQuestConceptIds.length < 4) throw new Error("Insufficient source-grounded concepts");
+  if (bookMap.proposedQuestConceptIds.length < 1) throw new Error("Insufficient source-grounded concepts");
   const visualCandidates = pages.filter((page) => page.visual && page.role === "lesson").map((page) => ({
     pageIndex: page.pageIndex, concept: page.concept, evidenceIds: [`batch-p${page.pageIndex}-b0`], ...page.visual!,
   }));

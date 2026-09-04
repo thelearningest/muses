@@ -1,4 +1,4 @@
-import { parseQuest, QUEST_SCHEMA, type GameContent, type GamePackage, type Quest } from "../../game-package";
+import { hasPlayableVisuals, hasRequiredVisualQuests, parseQuest, QUEST_SCHEMA, type GameContent, type GamePackage, type Quest } from "../../game-package";
 import type { QuestEvidenceContract } from "./contracts";
 import type { ReasoningEffort } from "./config";
 import { validateGameAgainstContracts } from "./generation-stage";
@@ -13,6 +13,15 @@ import { settleAll } from "./parallel";
 type Verdict = { accepted: boolean; issues: string[] };
 type StorePort = { putJson(jobId: string, path: string, value: unknown, expiresAt: number): Promise<void> };
 
+// Send image bytes once as vision inputs, never as base64 text in the prompt.
+function modelQuest(quest: Quest) {
+  const { sourceImages: _images, ...visual } = quest.visual ?? {};
+  return { ...quest, visual };
+}
+function playerImages(quest: Quest) {
+  return quest.visual?.sourceImages?.map((image) => ({ ...image, detail: "high" as const }));
+}
+
 async function traced<T>(provider: StructuredOutputProvider, repository: Pick<BookJobRepository, "appendOpenAiRequestId">, jobId: string, now: number, request: Parameters<StructuredOutputProvider["generateStructured"]>[0]) {
   const response = await provider.generateStructured<T>(request);
   await repository.appendOpenAiRequestId(jobId, response.requestId ?? response.responseId, now);
@@ -25,8 +34,9 @@ async function verifyQuest(input: { quest: Quest; contract: QuestEvidenceContrac
     reasoningEffort: input.reasoningEffort,
     schemaName: "quest_verification",
     schema: QUEST_VERIFICATION_SCHEMA,
-    instructions: `Verify factual grounding, answer correctness and playability of the CURRENT QUEST, not the quality of unused evidence-contract assertions. Combine text excerpts and image evidence: a claim explicitly supported by text need not also be independently measurable in a photograph. If a contract assertion is doubtful, reject only when the current quest relies on that assertion as a source fact. Reject unsupported source claims and questions requiring absent controls or unseen details. Do not reject clearly original fictional scenarios, XP, proposed repairs or schematic design choices merely because they are not in the book. Static observation-topic labels are allowed and are not promised interactive tools. Evaluate wrong choices as distractors, not assertions that must be true; their feedback must correctly explain why they are wrong. A correct answer must be best among the three choices under the stated scenario criteria, not the only conceivable real-world design. Report only concrete defects in the current quest, identifying the offending field and claim; do not include passing observations or stylistic preferences in issues. Accept with an empty issues array when no such defect remains. ${MODEL_EVIDENCE_RULES}\n${GAME_RENDERER_RULES}`,
-    input: JSON.stringify({ quest: input.quest, evidenceContract: modelEvidenceContract(input.contract) }),
+    instructions: `Verify the CURRENT visual quiz against the attached player-visible images and book evidence. Reject wrong or ambiguous correct answers, unsupported source facts, text-only questions, and missing or illegible visual evidence essential to the answer. A proposed change to a specific existing visible element is allowed: do NOT require a before/after rendering or all hypothetical alternatives to be pictured. The learner reasons about the proposed change using existing visible objects. Each question must require a concrete observation, not merely general design advice. Diagnosis feedback is displayed AFTER the diagnosis answer, not before; it may explain the answer. Repair feedback appears only AFTER the repair. The second question must still require a new observation even after diagnosis feedback. Regions are approximate navigation aids, not precision measurements; tolerate broad/overlapping regions if they include the named features, and ignore minor caption or boundary imperfections irrelevant to the answer. Report only actionable correctness or visual-dependence defects, not stylistic preferences. Do not reject fictional scenarios or proposed changes just because they are not in the book. Evaluate wrong choices as distractors. Accept with an empty issues array if no substantive defect remains. ${MODEL_EVIDENCE_RULES}\n${GAME_RENDERER_RULES}`,
+    input: JSON.stringify({ quest: modelQuest(input.quest), evidenceContract: modelEvidenceContract(input.contract) }),
+    images: playerImages(input.quest),
     safetyIdentifier: input.identityHash,
   });
 }
@@ -38,16 +48,19 @@ async function repairQuest(input: { quest: Quest; contract: QuestEvidenceContrac
     schemaName: "repaired_quest",
     schema: QUEST_SCHEMA,
     instructions: `Repair only the supplied quest. Resolve every listed verification issue using only the evidence contract. Preserve its id, number and valid page anchors. Return the complete repaired quest and no commentary. ${MODEL_EVIDENCE_RULES}\n${GAME_RENDERER_RULES}`,
-    input: JSON.stringify({ quest: input.quest, evidenceContract: modelEvidenceContract(input.contract), issues: input.issues }),
+    input: JSON.stringify({ quest: modelQuest(input.quest), evidenceContract: modelEvidenceContract(input.contract), issues: input.issues }),
+    images: playerImages(input.quest),
     safetyIdentifier: input.identityHash,
   });
   const parsed = parseQuest(candidate);
   if (!parsed || parsed.id !== input.quest.id || parsed.number !== input.quest.number) throw new Error("Quest repair is invalid");
+  if (parsed.visual) parsed.visual.sourceImages = input.quest.visual?.sourceImages;
   return parsed;
 }
 
 async function finish(input: { job: { id: string; originalFilename: string; expiresAt: number }; game: GameContent; store: StorePort; repository: Pick<BookJobRepository, "markTerminal">; now: number; isActive?: () => Promise<boolean> }) {
   await requireActiveJob(input.isActive);
+  if (!hasRequiredVisualQuests(input.game)) throw new Error("A completed game needs at least three quests with different inspectable visuals");
   const game: GamePackage = { ...input.game, schemaVersion: 1, id: crypto.randomUUID(), sourceFilename: input.job.originalFilename, generatedAt: new Date(input.now * 1_000).toISOString() };
   await input.store.putJson(input.job.id, "game.json", game, input.job.expiresAt);
   if (await input.repository.markTerminal(input.job.id, "complete", null, input.now, input.job.expiresAt) === false) return { outcome: "inactive" as const };
@@ -154,15 +167,20 @@ async function verifyRemainingQuests(input: Parameters<typeof verifyNextQuestSta
       return { index, quest, verdict, repairs };
     }));
     await requireActiveJob(input.isActive);
-    const game = { ...input.game, quests: [...input.game.quests] };
-    for (const result of results) game.quests[result.index] = result.quest;
-    const rejected = results.find((result) => !result.verdict.accepted);
-    if (rejected || validateGameAgainstContracts(game, input.contracts).length) {
+    // Keep only candidates whose image-dependent questions passed. Never fill
+    // a quota with rejected questions or fail a good quest because a peer failed.
+    const accepted = results.filter((result) => result.verdict.accepted &&
+      !validateGameAgainstContracts({ ...input.game, quests: [result.quest] }, [input.contracts[result.index]]).length &&
+      hasPlayableVisuals({ ...input.game, quests: [result.quest] }));
+    const kept = [...input.game.quests.slice(0, input.job.batchCursor).map((quest, index) => ({ quest, index })), ...accepted];
+    const contracts = kept.map((result) => input.contracts[result.index]);
+    const game = { ...input.game, quests: kept.map((result, index) => ({ ...result.quest, id: `q${index + 1}`, number: String(index + 1) })) };
+    if (!hasRequiredVisualQuests(game) || validateGameAgainstContracts(game, contracts).length) {
       await input.repository.markTerminal(input.job.id, "failed_terminal", "verification_failed", input.now, input.job.expiresAt, "verifying_quests");
-      return { outcome: "terminal", ...(rejected ? { failedQuestIndex: rejected.index } : {}) };
+      return { outcome: "terminal" };
     }
-    for (const result of results) await input.store.putJson(input.job.id, `verification/${result.index}.json`, { accepted: true, repairs: result.repairs }, input.job.expiresAt);
-    await input.store.putJson(input.job.id, "game-draft.json", { game, questContractIds: Object.fromEntries(game.quests.map((quest, index) => [quest.id, input.contracts[index].id])) }, input.job.expiresAt);
+    for (const result of results) await input.store.putJson(input.job.id, `verification/${result.index}.json`, { accepted: accepted.includes(result), repairs: result.repairs, issues: result.verdict.issues }, input.job.expiresAt);
+    // Preserve the original draft/indices for exact provider-call replay.
     return await finish({ ...input, game });
   } catch (error) {
     if (error instanceof InactiveBookJobError) return { outcome: "inactive" };

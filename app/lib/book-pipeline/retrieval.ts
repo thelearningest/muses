@@ -159,7 +159,29 @@ export async function retrieveQuestEvidenceStage(input: {
     if (evidenceBatches.some((batch) => !batch)) throw new Error("Evidence is incomplete");
     const cards = evidenceBatches.flatMap((batch) => batch?.cards ?? []);
     const units = chunkCanonicalBook(input.canonical).units;
-    const concepts = input.bookMap.proposedQuestConceptIds.map((id) => input.bookMap.concepts.find((concept) => concept.id === id)).filter((value): value is BookMap["concepts"][number] => Boolean(value));
+    // Select around usable visuals, not an arbitrary lesson quota. Consider all
+    // grounded concepts because the best illustration may sit outside the top 9.
+    const eligible = input.bookMap.concepts.map((concept) => ({ concept, contract: buildQuestContract({ concept, evidenceCards: cards, visualAnnotations: input.visualAnnotations }) }))
+      .filter(({ contract }) => !contract.missingEvidence.some((field) => ["central_claim", "player_action", "source_anchor"].includes(field)));
+    const seenVisuals = new Set<string>();
+    const visualConcepts = eligible.filter(({ contract }) => {
+      const visual = contract.visualAnnotations.find((a) => a.visualAgent && !seenVisuals.has(a.visualReferenceId));
+      if (!visual) return false;
+      // Use one source illustration (which may have two crops) per quest.
+      contract.visualAnnotations = [visual];
+      seenVisuals.add(visual.visualReferenceId);
+      return true;
+    }).slice(0, 3);
+    // Fill missing visual opportunities with original practice designs based
+    // on other supported concepts. Never fill missing source evidence with fiction.
+    const chosen = [...visualConcepts];
+    for (const item of eligible) {
+      if (chosen.length >= 3) break;
+      if (chosen.some((existing) => existing.concept.id === item.concept.id)) continue;
+      chosen.push({ ...item, contract: { ...item.contract, visualAnnotations: [] } });
+    }
+    const concepts = chosen.map((item) => item.concept);
+    if (concepts.length < 3) throw new Error("Three supported visual learning opportunities are required");
     const values = [...units.map((unit) => `${unit.contextPrefix}\n${unit.text}`), ...concepts.map((concept) => `${concept.name}\n${concept.summary}`)];
     if (input.reserveCostUnits && input.maxCostUnits && input.repository.reserveProviderCost) {
       reserved = await input.repository.reserveProviderCost(input.job.id, input.reserveCostUnits, input.maxCostUnits, input.now);
@@ -183,7 +205,7 @@ export async function retrieveQuestEvidenceStage(input: {
       const expanded = expandWithinParent(fused.map((item) => item.id), units);
       const relevantBlocks = new Set(expanded.flatMap((unit) => unit.blockIds));
       const conceptCards = cards.filter((card) => concept.evidenceCardIds.includes(card.id) || card.sources.some((source) => source.canonicalBlockIds.some((id) => relevantBlocks.has(id))));
-      return buildQuestContract({ concept, evidenceCards: conceptCards, visualAnnotations: input.visualAnnotations });
+      return buildQuestContract({ concept, evidenceCards: conceptCards, visualAnnotations: input.visualAnnotations.filter((a) => chosen[index].contract.visualAnnotations.some((v) => v.visualReferenceId === a.visualReferenceId)) });
     });
     if (contracts.some((contract) => contract.missingEvidence.includes("central_claim") || contract.missingEvidence.includes("player_action") || contract.missingEvidence.includes("source_anchor"))) {
       throw new Error("A proposed quest lacks required evidence");

@@ -2866,6 +2866,33 @@ button:disabled {
   }
 }
 
+.source-visual { width: 100%; min-width: 0; padding: clamp(1rem, 3vw, 2rem); background: #f2eee3; color: #171714; }
+.source-visual-heading { display: flex; justify-content: space-between; align-items: start; gap: 1rem; margin-bottom: 1rem; }
+.source-visual-heading span { font: .7rem var(--font-mono), monospace; text-transform: uppercase; letter-spacing: .1em; }
+.source-visual-heading h3 { margin: .3rem 0 0; font: 1.5rem Georgia, serif; }
+.source-visual-heading button { white-space: nowrap; min-height: 44px; }
+.quiz-images { display: grid; gap: 1rem; align-items: start; }
+.quiz-image-frame { position: relative; width: 100%; }
+.quiz-image-frame img { display: block; width: 100%; height: auto; }
+.quiz-image-region { position: absolute; border: 3px solid #f0ca08; box-shadow: 0 0 0 1px #171714, 0 0 0 9999px #17171418; pointer-events: none; }
+.quiz-image-frame { overflow: hidden; }
+.quiz-image-region b { display: inline-grid; place-items: center; min-width: 24px; min-height: 24px; background: #f0ca08; color: #171714; }
+.visual-region-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
+.visual-region-controls button { display: flex; gap: .5rem; align-items: center; background: transparent; border: 1px solid #9e9b91; padding: .5rem .75rem; min-height: 44px; text-align: left; cursor: pointer; }
+.visual-region-controls button[aria-pressed="true"] { background: #f0ca08; border-color: #171714; }
+.visual-region-controls span { font-family: monospace; }
+.visual-provenance { margin: 1rem 0 0; font-size: .75rem; color: #58594f; }
+.visual-lightbox { width: min(96vw, 1200px); max-width: 96vw; padding: 0; border: 1px solid #171714; background: #f2eee3; color: #171714; }
+.visual-lightbox::backdrop { background: #171714dd; }
+.visual-lightbox-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; padding: .75rem; }
+.visual-lightbox-toolbar > div { display: flex; align-items: center; gap: .5rem; }
+.visual-lightbox-toolbar button { min-width: 44px; min-height: 44px; border: 1px solid #171714; background: #f0ca08; color: #171714; cursor: pointer; padding: .5rem; }
+.visual-lightbox-toolbar button:disabled { opacity: .45; }
+.visual-lightbox-scroll { max-height: 70dvh; overflow: auto; }
+.visual-lightbox > p { margin: .75rem; font-size: .8rem; }
+.visual-unavailable { padding: 2rem; }
+@media (min-width: 800px) { .image-count-2 { grid-template-columns: 1fr 1fr; } }
+
 @media (prefers-reduced-motion: reduce) {
   .generation-meter > span {
     transition: none;

@@ -6,7 +6,7 @@ import { validBox, type Candidate, type CropBox, type VisualAsset, type VisualSt
 import { VISUAL_STATE_PATH, type VisualStore } from "./stage";
 
 type ExtractedVisual = { pageIndex: number; concept: string; evidenceIds: string[]; description: string; box: CropBox; appeal: number };
-const limitation = "Selected from full-page extraction, not independently crop-reviewed. Private reference for original adaptation only. Do not score tiny labels, counts, attribution or crop-dependent claims without checking the actual supplied image and source text.";
+const limitation = "Selected from full-page extraction, not independently crop-reviewed. Do not score tiny labels, counts, attribution or crop-dependent claims without checking the actual supplied image and source text. The quiz reviewer must inspect this crop before it can be used.";
 
 export function batchReferenceState(book: CanonicalBook, seeds: ExtractedVisual[]): VisualState {
   const candidates: Candidate[] = seeds.filter((seed) => Number.isFinite(seed.appeal) && seed.appeal >= 0.625 && seed.appeal <= 1 && validBox(seed.box)

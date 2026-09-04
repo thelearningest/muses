@@ -82,7 +82,7 @@ export function buildBookMap(canonical: CanonicalBook, cards: EvidenceCard[]): B
   });
   const selected = concepts.slice(0, 9);
   const omissions = unique(cards.flatMap((card) => card.uncertainty));
-  if (selected.length < 4) omissions.push("Fewer than four independently supported quest concepts were found.");
+  if (!selected.length) omissions.push("No independently supported quest concepts were found.");
   return {
     schemaVersion: 1,
     ...(canonical.source.title ? { bookTitle: canonical.source.title } : {}),
@@ -110,7 +110,7 @@ export async function buildBookMapStage(input: {
     ));
     if (batches.some((batch) => !batch)) throw new Error("An evidence batch is missing");
     const map = buildBookMap(input.canonical, batches.flatMap((batch) => batch?.cards ?? []));
-    if (map.proposedQuestConceptIds.length < 4) throw new Error("Insufficient supported concepts");
+    if (map.proposedQuestConceptIds.length < 1) throw new Error("Insufficient supported concepts");
     await input.store.putJson(input.job.id, "book-map.json", map, input.job.expiresAt);
     await input.store.putJson(input.job.id, "evidence-manifest.json", { batchCount: input.job.batchCursor }, input.job.expiresAt);
     await input.repository.commitStage({

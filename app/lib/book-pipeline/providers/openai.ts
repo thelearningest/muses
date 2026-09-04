@@ -56,7 +56,7 @@ export class OpenAiRejectedRequestError extends Error {
   constructor(status: number) { super(`OpenAI request rejected with status ${status}`); this.name = "OpenAiRejectedRequestError"; }
 }
 
-async function paidRequest(fetcher: Fetcher, url: string, apiKey: string, payload: unknown): Promise<Response> {
+export async function paidRequest(fetcher: Fetcher, url: string, apiKey: string, payload: unknown): Promise<Response> {
   // Serialization errors happen before transmission and must not consume a
   // reservation. Once fetch starts, an exception cannot prove non-processing.
   const body = JSON.stringify(payload);
