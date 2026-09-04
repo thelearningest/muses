@@ -36,6 +36,22 @@ const image = () => ({ id: "ocr-p0-r0-0", sourceFingerprint: "source", imageUrl:
 const packet = () => ({ sourceFingerprint: "source", pageIndex: 0, revision: 0, nativeText: "", orderReliable: false, images: [image()] });
 
 describe("authenticated extraction handoff", () => {
+  it("accepts a batch upload when another group advances the progress cursor", async () => {
+    const f = await fixture();
+    f.values.set("ingestion.json", { provider: "luna", batchedExtraction: true });
+    await f.call("POST", f.manifest);
+    const read = f.store.getJson;
+    let reads = 0;
+    f.store.getJson = async <T,>(id: string, path: string) => {
+      if (path === EXTRACTION_STATE_PATH && ++reads === 2) {
+        const state = f.values.get(path) as Record<string, unknown>;
+        f.values.set(path, { ...state, cursor: 8 });
+      }
+      return read<T>(id, path);
+    };
+    expect((await f.call("PUT", packet())).status).toBe(200);
+    expect(f.values.has("extraction/assets/0-0.json")).toBe(true);
+  });
   it("leaves existing v2 manifests byte-for-byte unchanged when resuming", async () => {
     const f = await fixture();
     const legacy = initialExtractionState("source", 109, lunaLimits({}, "BOOK_EXTRACTION"), 2);

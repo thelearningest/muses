@@ -31,6 +31,24 @@ function memoryStorage() {
 }
 
 describe("resumable book job client", () => {
+  it("advances ready batches while later pages are still preparing without duplicate uploads", async () => {
+    const controller = new AbortController();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const prepareExtractionPage = vi.fn(() => gate);
+    const request = { pageIndex: 0, revision: 0, parts: 1 as const, allowNative: true, compact: true };
+    const advance = vi.fn(async () => {
+      if (advance.mock.calls.length === 2) {
+        expect(prepareExtractionPage).toHaveBeenCalledOnce();
+        release();
+        controller.abort();
+      }
+      return { outcome: "awaiting_extraction_assets", requests: [request], sourceFingerprint: "source" };
+    });
+    expect(await driveBookJob({ job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "reading_source" as const, recoverable: false })), advance, acknowledge: vi.fn() }, signal: controller.signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(), prepareExtractionPage, sleep: vi.fn(async () => undefined) })).toBe("aborted");
+    expect(advance).toHaveBeenCalledTimes(2);
+    expect(prepareExtractionPage).toHaveBeenCalledOnce();
+  });
   it("surfaces a terminal extraction failure instead of silently removing the job", async () => {
     const clear = vi.fn();
     await expect(driveBookJob({ job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "failed" as const, recoverable: false, error: { code: "extraction_quality_insufficient", message: "Cannot read PDF page 6." } })), advance: vi.fn(), acknowledge: vi.fn() }, signal: new AbortController().signal, onStatus: vi.fn(), saveGame: vi.fn(), clear, sleep: vi.fn() })).rejects.toThrow("Cannot read PDF page 6.");

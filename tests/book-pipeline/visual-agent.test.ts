@@ -50,14 +50,17 @@ describe("bounded visual agent", () => {
     await expect(step(stateAt("crop"), { title: "Poster", concept: "grid", boxes: [box], evidenceIds: ["b1"], reason: "Nice" })).rejects.toThrow(/different page/);
     await expect(step(stateAt("crop"), { title: "Poster", concept: "grid", boxes: [{ ...box, x: 0.9 }], evidenceIds: [], reason: "Nice" })).rejects.toThrow(/bounds/);
   });
-  it("invalidates prior judgments after one crop refinement and keeps pair size", async () => {
+  it("invalidates prior judgments and allows a refinement to discard an unrelated crop", async () => {
     const state = stateAt("review");
     const next = await step(state, { ...review, action: "refine", boxes: [box] });
     expect(next.state.candidates[0].revision).toBe(1); expect(next.state.candidates[0].review).toBeUndefined();
     expect(next.state.candidates[0].verdict).toBeUndefined(); expect(state.candidates[0].revision).toBe(0);
     await expect(step(next.state, { ...review, action: "refine", boxes: [box] })).rejects.toThrow(/refinement/);
     state.candidates[0].boxes = [box, box];
-    await expect(step(state, { ...review, action: "refine", boxes: [box] })).rejects.toThrow(/refinement/);
+    const reduced = await step(state, { ...review, action: "refine", boxes: [box] });
+    expect(reduced.state.candidates[0].boxes).toHaveLength(1);
+    expect(reduced.state.candidates[0].cropHashes).toBeUndefined();
+    await expect(step(state, { ...review, action: "refine", boxes: [] })).rejects.toThrow(/refinement/);
   });
   it("does not show the verifier aesthetic scores or persuasive reasons", async () => {
     const result = await step(stateAt("verify"), verdict);
@@ -72,8 +75,11 @@ describe("bounded visual agent", () => {
     const valid = { ...verdict, evidenceIds: ["b0", "v0-r0-0-crop"], claims: [{ claim: "Guides", kind: "visible", evidenceIds: ["v0-r0-0-crop"] }] };
     const result = await step(stateAt("verify"), valid);
     expect(result.state.candidates[0].evidenceIds).toEqual(["b0"]);
-    await expect(step(stateAt("verify"), { ...valid, claims: [{ claim: "Guides", kind: "source_supported", evidenceIds: ["v0-r0-0-crop"] }] })).rejects.toThrow(/text blocks/);
-    await expect(step(stateAt("verify"), { ...valid, evidenceIds: ["v0-r99-0-crop"] })).rejects.toThrow(/unknown/);
+    const missingText = await step(stateAt("verify"), { ...valid, claims: [{ claim: "Guides", kind: "source_supported", evidenceIds: ["v0-r0-0-crop"] }] });
+    expect(missingText.state.candidates[0].verdict?.disposition).toBe("rejected");
+    const stale = await step(stateAt("verify"), { ...valid, evidenceIds: ["v0-r99-0-crop"] });
+    expect(stale.state.candidates[0].verdict?.disposition).toBe("rejected");
+    expect(stale.state.phase).toBe("crop");
   });
   it("orders by appeal and removes duplicate images", () => {
     const dull = fixtureCandidate("dull"); dull.review = { ...review, scores: [3,3,3,3,3] };

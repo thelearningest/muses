@@ -2,8 +2,9 @@ import { isGamePackage, type GamePackage } from "./game-package";
 import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
 import type { RenderRequest } from "./lib/book-pipeline/visual-agent/schema";
 import type { ExtractionPageRequest } from "./lib/book-pipeline/extraction/stage";
+import { mapConcurrent } from "./lib/book-pipeline/parallel";
 
-export type BookJobAdvanceResult = { outcome: string; completedBatches?: number; totalBatches?: number; verifiedQuests?: number; totalQuests?: number; renderRequests?: RenderRequest[]; sourceFingerprint?: string; request?: ExtractionPageRequest; maxPages?: number };
+export type BookJobAdvanceResult = { outcome: string; completedBatches?: number; totalBatches?: number; verifiedQuests?: number; totalQuests?: number; renderRequests?: RenderRequest[]; sourceFingerprint?: string; request?: ExtractionPageRequest; requests?: ExtractionPageRequest[]; maxPages?: number };
 
 export const RESUMABLE_JOB_KEY = "playable-books-active-job:v1";
 export const BROWSER_IDENTITY_KEY = "playable-books-browser-identity:v1";
@@ -163,7 +164,12 @@ export async function driveBookJob(input: {
     if (signal.aborted) finish();
   }));
   let lastAdvanceAt = 0;
+  let preparation: Promise<void> | undefined;
+  let preparationError: unknown;
+  const prepared = new Set<string>();
+  try {
   while (!input.signal.aborted) {
+    if (preparationError) throw preparationError;
     let progressed = false;
     const status = await input.client.status(input.job);
     if (input.signal.aborted) return "aborted";
@@ -200,8 +206,22 @@ export async function driveBookJob(input: {
         await input.prepareExtractionManifest(advanced.sourceFingerprint, advanced.maxPages);
       }
       if (advanced.outcome === "awaiting_extraction_assets") {
-        if (!input.prepareExtractionPage || !advanced.request || !advanced.sourceFingerprint) throw new BookJobClientError("source_file_needed", "Select the same PDF to continue reading it.", 409);
-        await input.prepareExtractionPage(advanced.request, advanced.sourceFingerprint);
+        const requests = advanced.requests ?? (advanced.request ? [advanced.request] : []);
+        if (!input.prepareExtractionPage || !requests.length || requests.length > 300 || !advanced.sourceFingerprint) throw new BookJobClientError("source_file_needed", "Select the same PDF to continue reading it.", 409);
+        // Keep preparing subsequent pages while the server reads ready groups.
+        // A stale missing-assets response must not render an uploaded page again.
+        if (!advanced.requests) {
+          // Legacy extraction is cursor-driven and must finish this page first.
+          await input.prepareExtractionPage(requests[0], advanced.sourceFingerprint);
+        } else if (!preparation) {
+          const key = (request: ExtractionPageRequest) => `${request.pageIndex}:${request.revision}`;
+          const remaining = requests.filter((request) => !prepared.has(key(request)));
+          if (remaining.length) preparation = mapConcurrent(remaining, 3, async (request) => {
+            if (input.signal.aborted) return;
+            await input.prepareExtractionPage!(request, advanced.sourceFingerprint!);
+            prepared.add(key(request));
+          }).then(() => { preparation = undefined; }, (error) => { preparationError = error; preparation = undefined; });
+        }
       }
       if (advanced.outcome === "awaiting_assets") {
         if (!input.renderAssets || !advanced.renderRequests || !advanced.sourceFingerprint) throw new BookJobClientError("source_file_needed", "Select the same PDF to continue inspecting its images.", 409);
@@ -210,7 +230,12 @@ export async function driveBookJob(input: {
     }
     // Yield to the browser after useful work, but only back off when waiting.
     // A fixed per-step sleep added minutes to otherwise healthy book jobs.
-    await sleep(progressed ? 0 : status.stage === "waiting_for_ocr" ? 5_000 : 1_200, input.signal);
+    await sleep(preparation ? 500 : progressed ? 0 : status.stage === "waiting_for_ocr" ? 5_000 : 1_200, input.signal);
   }
   return "aborted";
+  } finally {
+    // Renderer ownership belongs to the caller; do not let it be destroyed
+    // while an already-started page preparation still uses the document.
+    await preparation;
+  }
 }

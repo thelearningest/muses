@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { imageSize } from "image-size";
 import type { RenderRequest, VisualAsset } from "./schema";
 
 // Base64 adds 1/3: 120 possible assets * 768 KiB * 4/3 plus JSON fits 128 MiB.
@@ -9,6 +10,23 @@ export const assetUploadSchema = z.object({
   rotation: z.number().int().min(0).max(359), renderer: z.string().max(100),
   imageUrl: z.string().max(Math.ceil(MAX_VISUAL_ASSET_BYTES * 4 / 3) + 32),
 }).strict();
+
+/** Compact intake uses JPEG for scanned photographs. Only inspect its bounded
+ * byte stream and dimensions here; the Worker never decodes JPEG pixels. */
+export async function validateBatchVisualAsset(value: unknown, request: RenderRequest, fingerprint: string): Promise<VisualAsset> {
+  const asset = assetUploadSchema.parse(value);
+  if (asset.imageUrl.startsWith("data:image/png;base64,")) return validateVisualAsset(value, request, fingerprint);
+  if (asset.id !== request.id || asset.sourceFingerprint !== fingerprint || !asset.imageUrl.startsWith("data:image/jpeg;base64,")) throw new Error("Batch image/source mismatch");
+  const binary = atob(asset.imageUrl.slice(23));
+  if (binary.length < 4 || binary.length > 384 * 1024) throw new Error("Invalid JPEG size");
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  if (bytes[0] !== 255 || bytes[1] !== 216 || bytes.at(-2) !== 255 || bytes.at(-1) !== 217) throw new Error("Invalid JPEG boundary");
+  const dimensions = imageSize(bytes);
+  if (dimensions.type !== "jpg" || dimensions.width !== asset.width || dimensions.height !== asset.height || (dimensions.orientation && dimensions.orientation !== 1)) throw new Error("JPEG dimensions or orientation mismatch");
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return { id: asset.id, width: asset.width, height: asset.height, rotation: asset.rotation, renderer: asset.renderer,
+    imageUrl: asset.imageUrl, hash: [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("") };
+}
 export async function validateVisualAsset(value: unknown, request: RenderRequest, fingerprint: string): Promise<VisualAsset> {
   const asset = assetUploadSchema.parse(value);
   if (asset.id !== request.id || asset.sourceFingerprint !== fingerprint) throw new Error("Render asset/source mismatch");

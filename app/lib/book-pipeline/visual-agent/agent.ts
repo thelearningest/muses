@@ -6,7 +6,7 @@ import { rankedCandidates, lunaImageTokenBound } from "./policy";
 import { cropSchema, jsonSchema, reviewSchema, scoutSchema, selectionSchema, validBox, verdictSchema,
   type Candidate, type RenderRequest, type VisualAsset, type VisualState } from "./schema";
 
-export type VisualConfig = { model: string; maxMicros: number; inputUsdPerMillion: number; outputUsdPerMillion: number; plannedQuests: number };
+export type VisualConfig = { model: string; maxMicros: number; inputUsdPerMillion: number; outputUsdPerMillion: number; plannedQuests: number; maxCandidates?: number };
 export type AgentCall = Parameters<StructuredOutputProvider["generateStructured"]>[0];
 export type AgentPorts = {
   asset(request: RenderRequest): Promise<VisualAsset | null>;
@@ -40,7 +40,9 @@ export async function advanceVisualAgent(input: { state: VisualState; book: Cano
   if (state.sourceFingerprint !== input.book.source.fingerprint || state.promptVersion !== "visual-v1") throw new Error("Visual checkpoint belongs to a different source or prompt version");
   if (state.phase === "done") return { state, requests: [] };
   if (!state.pages.length) return { state: finished(state, "no_pages"), requests: [] };
-  if (state.phase === "crop" && !state.queue.length) state.phase = "select";
+  const maxCandidates = input.config.maxCandidates ?? 12;
+  if (!Number.isInteger(maxCandidates) || maxCandidates < 1 || maxCandidates > 12) throw new Error("Invalid visual candidate limit");
+  if (state.phase === "crop" && (!state.queue.length || state.candidates.length >= maxCandidates)) state.phase = "select";
   const requests = renderRequests(state);
   const assets: VisualAsset[] = [];
   const missing: RenderRequest[] = [];
@@ -100,7 +102,9 @@ export async function advanceVisualAgent(input: { state: VisualState; book: Cano
     const result = reviewSchema.parse(response.data);
     if (result.quiz && new Set(result.quiz.choices).size !== 3) throw new Error("Quiz choices must be distinct");
     if (result.action === "refine") {
-      if (c!.revision >= 1 || result.boxes.length !== c!.boxes.length || result.boxes.some((b) => !validBox(b))) throw new Error("Invalid crop refinement");
+      // A refinement may discard an unrelated neighboring image or recover a
+      // comparison partner. New revision IDs invalidate every prior crop.
+      if (c!.revision >= 1 || !result.boxes.length || result.boxes.some((b) => !validBox(b))) throw new Error("Invalid crop refinement");
       c!.boxes = result.boxes; c!.revision++;
       delete c!.review; delete c!.verdict; delete c!.cropHashes;
     } else {
@@ -114,8 +118,17 @@ export async function advanceVisualAgent(input: { state: VisualState; book: Cano
     const result = verdictSchema.parse(response.data);
     const imageIds = new Set(assets.map((asset) => asset.id));
     const allIds = [...new Set([...result.evidenceIds, ...result.claims.flatMap((claim) => claim.evidenceIds)])];
-    allowedEvidence(allIds.filter((id) => !imageIds.has(id)), input.book, c!.pageIndex);
-    if (result.claims.some((claim) => claim.kind === "source_supported" && !claim.evidenceIds.some((id) => !imageIds.has(id)))) throw new Error("Source claim must cite text blocks");
+    try {
+      allowedEvidence(allIds.filter((id) => !imageIds.has(id)), input.book, c!.pageIndex);
+      if (result.claims.some((claim) => claim.kind === "source_supported" && !claim.evidenceIds.some((id) => !imageIds.has(id)))) throw new Error("Source claim must cite text blocks");
+    } catch {
+      // An optional visual with invalid citations is unusable, not a reason to
+      // discard the rest of the book or pay to repeat its completed extraction.
+      c!.verdict = { disposition: "rejected", evidenceIds: [], claims: [], reason: "Verifier returned invalid source citations." };
+      c!.evidenceIds = [];
+      state.queue.shift(); state.phase = "crop"; state.step++;
+      return { state, requests: [] };
+    }
     if (result.disposition === "quiz_ready" && (!c!.review!.quiz || !result.claims.length || result.claims.some((claim) => ["interpretation", "unsupported"].includes(claim.kind)))) result.disposition = "reference_only";
     c!.verdict = result;
     c!.evidenceIds = allIds.filter((id) => !imageIds.has(id));

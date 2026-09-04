@@ -9,7 +9,7 @@ export type VisualCallBudget = {
 export type ProviderCall = { id: string; run_id: string; job_id: string; slot: number; attempt: number; request_hash: string; state: "pending" | "unknown" | "rejected" | "complete"; reserved_units: number; actual_units: number; result_path: string; created_at: number; expires_at: number };
 const changed = (r: D1Result) => r.success && Number(r.meta?.changes) === 1;
 const HASH = /^[a-f0-9]{64}$/;
-const STAGES = new Set<BookJobStatus>(["mapping_evidence", "building_book_map", "retrieving_quest_evidence", "generating_game", "verifying_quests"]);
+const STAGES = new Set<BookJobStatus>(["extracting_pages", "mapping_evidence", "building_book_map", "retrieving_quest_evidence", "generating_game", "verifying_quests"]);
 
 /** Ownership and accounting live in D1; raw responses remain immutable in R2.
  * All guards use the current clock, including after slow provider calls. */
@@ -67,8 +67,8 @@ export class BookOperationRepository {
   }
 
   async claimCall(run: StageOwner, input: { slot: number; requestHash: string; reserveUnits: number; ceiling: number; retryConfirmed?: boolean; visual?: VisualCallBudget }): Promise<ProviderCall | null> {
-    // Root sequence plus nine quest partitions, ten calls per sequence.
-    if (!Number.isSafeInteger(input.slot) || input.slot < 0 || input.slot > 99 || !HASH.test(input.requestHash) ||
+    // Root sequence plus bounded page-batch/quest partitions, ten calls each.
+    if (!Number.isSafeInteger(input.slot) || input.slot < 0 || input.slot > 649 || !HASH.test(input.requestHash) ||
       ![input.reserveUnits,input.ceiling].every((n) => Number.isSafeInteger(n) && n > 0)) throw new Error("Invalid call admission");
     // The provider can attach decimal pricing metadata alongside the admission
     // counters. Validate the actual counter fields, not every extra property.

@@ -30,6 +30,18 @@ A compiled Worker with isolated local D1/R2 passed synthetic publication, retrie
 
 ## Current authoritative evidence
 
+### 2026-09-05 compact batch extraction checkpoint
+
+New jobs use pinned v4 extraction: eight source pages per Sol request, up to eight groups concurrently, compact selected exact excerpts and evidence cards, then the existing book map and downstream stages. Browser PDF.js rendering uses bounded JPEGs (the initial PNG-only 384 KiB limit failed on this scanned source). No external rendering service or Mistral credential is needed for this path. Batch calls reuse the durable paid-call journal and publish source artifacts atomically only after complete page coverage.
+
+Fresh compiled local Worker job `78621b95-2a0c-4f1c-9cf6-9a9450b06517` processed all **109 scanned PDF pages** in 14 real Sol calls: 338,387 input tokens, 22,164 output tokens, conservative extraction estimate **$2.135215**. This is selective evidence extraction, not a complete transcription or independent OCR accuracy certification. Source upload/preparation took approximately 50 seconds; model extraction took approximately 56 more seconds. Visual selection then exceeded the end-to-end deadline and paused because a reviewer reduced two crop regions to one, which an overly strict validator rejected. The validator is fixed and the same job resumed using saved extraction and saved review responses. This run is not a timing pass and is not yet a complete-game production acceptance.
+
+The latest implementation overlaps browser preparation with ready-group extraction and tolerates progress-cursor changes during concurrent uploads. Legacy cursor-driven jobs still finish one page before advancing. Crop refinements may remove unrelated regions; all prior crop judgments are invalidated and the new crop still requires review/verification. Essential checks: 40 focused tests passed, then two added overlap cases passed (10 tests in their two files); TypeScript and the compiled Worker build passed before those test-only additions. No broad test suite, new service, UI redesign, public deployment, or new OCR benchmark was added.
+
+**100 pages to a complete playable game in under 120 seconds remains unverified and unachieved.** The compiled Worker is local, not evidence of hosted production operation.
+
+The resumed run exposed an invalid visual-verifier citation (`pageIndex-20` instead of a supplied block ID). Invalid optional candidates are now rejected, never promoted to trusted evidence, while the rest of the job can continue. New batch jobs inspect at most three visual candidates rather than traversing the entire scout queue. Existing non-batch jobs keep the prior twelve-candidate ceiling. The focused visual tests (23) and rebuilt production Worker pass; the current job resumes without repeating its saved provider responses.
+
 | Requirement | Evidence inspected | Finding / next work |
 | --- | --- | --- |
 | Fresh PDF with only OpenAI credentials | New jobs pin Luna ingestion; real browser upload reached page extraction without a Mistral key | Wired and partially live-tested. Full-book quality acceptance failed at PDF page 6; legacy jobs retain Mistral. |

@@ -17,7 +17,7 @@ export type ExtractionState = {
   limits: ExtractionLimits;
   usage: { calls: number; inputTokens: number; outputTokens: number; estimatedMicros: number };
 };
-export type ExtractionPageRequest = { pageIndex: number; revision: number; parts: number; allowNative: boolean };
+export type ExtractionPageRequest = { pageIndex: number; revision: number; parts: number; allowNative: boolean; compact?: boolean };
 export type ExtractionAsset = {
   pageIndex: number; revision: number; nativeText: string; orderReliable: boolean;
   images: Array<InputImage & { hash: string; width: number; height: number }>;

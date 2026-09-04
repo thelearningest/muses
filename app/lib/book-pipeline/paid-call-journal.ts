@@ -57,7 +57,7 @@ export class PaidCallJournal {
 
   structured(provider: StructuredOutputProvider): StructuredOutputProvider {
     return { partition: (index: number) => {
-      if (this.baseSlot !== 0 || !Number.isSafeInteger(index) || index < 0 || index >= 9) throw new Error("Invalid operation partition");
+      if (this.baseSlot !== 0 || !Number.isSafeInteger(index) || index < 0 || index >= 64) throw new Error("Invalid operation partition");
       return new PaidCallJournal(this.operations,this.owner,this.store,this.limits,(index + 1) * 10).structured(provider);
     }, generateStructured: <T>(request: Parameters<StructuredOutputProvider["generateStructured"]>[0]) => {
       const { visualBudget, ...payload } = request;

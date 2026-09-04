@@ -44,15 +44,16 @@ export async function createVisualPageRenderer(file: File) {
       }
       const images = [];
       if (!nativeTextUsable(nativeText, orderReliable)) {
-        for (const part of requests) images.push(await renderer.render(part, sourceFingerprint));
+        for (const part of requests) images.push(await renderer.render(part, sourceFingerprint, request.compact ? { edge: 2048, bytes: 384 * 1024 } : undefined));
       }
       return { sourceFingerprint, pageIndex: request.pageIndex, revision: request.revision, nativeText, orderReliable, images };
     },
-    async render(request: RenderRequest, sourceFingerprint: string) {
+    async render(request: RenderRequest, sourceFingerprint: string, limits?: { edge: number; bytes: number }) {
       if (fingerprint !== sourceFingerprint) throw new Error("Select the same PDF used for this job.");
       const page = await pdf.getPage(request.pageIndex + 1);
       const viewport = page.getViewport({ scale: 1 });
-      const edge = request.kind === "thumbnail" ? 512 : request.box ? 4096 : 2048;
+      const edge = limits?.edge ?? (request.kind === "thumbnail" ? 512 : request.box ? 4096 : 2048);
+      const maxBytes = limits?.bytes ?? 768 * 1024;
       const scaled = page.getViewport({ scale: edge / Math.max(viewport.width, viewport.height) });
       const canvas = document.createElement("canvas");
       canvas.width = Math.ceil(scaled.width); canvas.height = Math.ceil(scaled.height);
@@ -70,11 +71,11 @@ export async function createVisualPageRenderer(file: File) {
         for (let attempt = 0; attempt < 5; attempt++) {
           output.width = Math.max(1, Math.floor(width * scale)); output.height = Math.max(1, Math.floor(height * scale));
           output.getContext("2d")!.drawImage(canvas, box.x * canvas.width, box.y * canvas.height, width, height, 0, 0, output.width, output.height);
-          imageUrl = output.toDataURL("image/png");
-          if ((imageUrl.length - 22) * 3 / 4 <= 768 * 1024) break;
+          imageUrl = limits ? output.toDataURL("image/jpeg", 0.82) : output.toDataURL("image/png");
+          if ((imageUrl.length - imageUrl.indexOf(",") - 1) * 3 / 4 <= maxBytes) break;
           scale *= 0.75;
         }
-        if ((imageUrl.length - 22) * 3 / 4 > 768 * 1024) throw new Error("Page image exceeds the upload limit");
+        if ((imageUrl.length - imageUrl.indexOf(",") - 1) * 3 / 4 > maxBytes) throw new Error("Page image exceeds the upload limit");
         return { id: request.id, sourceFingerprint, imageUrl, width: output.width, height: output.height, rotation: scaled.rotation, renderer: `pdfjs-${pdfjs.version}` };
       } finally { canvas.width = canvas.height = output.width = output.height = 0; page.cleanup(); }
     },

@@ -275,7 +275,7 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
         const jobId = dependencies.newId();
         // Pin before the DB record becomes visible. A failed R2 write must not
         // leave a new job indistinguishable from a legacy Mistral job.
-        await dependencies.store.putJson(jobId, "ingestion.json", { version: 2, provider: dependencies.config.ocrProvider, parallelQuests: true }, now + dependencies.config.sourceRecoveryHours * 3_600);
+        await dependencies.store.putJson(jobId, "ingestion.json", { version: 3, provider: dependencies.config.ocrProvider, parallelQuests: true, batchedExtraction: true }, now + dependencies.config.sourceRecoveryHours * 3_600);
         await dependencies.repository.createJob({
           id: jobId,
           capabilityHash: await hashPrivateValue(
