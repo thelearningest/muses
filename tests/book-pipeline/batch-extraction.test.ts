@@ -1,5 +1,5 @@
 import { it, expect, vi } from "vitest";
-import { initialBatchState, validateBatchOutput, advanceBatchExtraction, pendingBatchExtractionRequests } from "../../app/lib/book-pipeline/extraction/batch";
+import { EXTRACTION_WAVE_SIZE, initialBatchState, validateBatchOutput, advanceBatchExtraction, pendingBatchExtractionRequests } from "../../app/lib/book-pipeline/extraction/batch";
 import { BookArtifactStore } from "../../app/lib/book-pipeline/artifact-store";
 import { BookJobRepository } from "../../app/lib/book-pipeline/job-repository";
 import { BookOperationRepository } from "../../app/lib/book-pipeline/operation-repository";
@@ -85,4 +85,37 @@ it.each([false, true])("extracts ready groups and publishes all evidence atomica
     expect(await store.getJson("job", "evidence-manifest.json")).toEqual({ batchCount: 1 });
     expect((await jobs.getJob("job"))?.status).toBe("annotating_visuals");
   } finally { db.close(); }
+});
+
+it("returns after each worker-safe wave and resumes from durable completed batches", async () => {
+  const store = new BookArtifactStore(new ConditionalR2());
+  const pageCount = (EXTRACTION_WAVE_SIZE + 1) * 8;
+  const state = initialBatchState("f", pageCount, { maxMicros: 25_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 });
+  await store.putJson("job", "extraction/state.json", state, 5000);
+  for (let index = 0; index < pageCount; index++) {
+    await store.putJson("job", `extraction/assets/${index}-0.json`, {
+      pageIndex: index, revision: 0, nativeText: page(index).excerpt, orderReliable: true, images: [],
+    }, 5000);
+  }
+  const send = vi.fn(async (request: Parameters<StructuredOutputProvider["generateStructured"]>[0]) => ({
+    responseId: `response-${send.mock.calls.length}`,
+    data: { bookTitle: "Source", pages: JSON.parse(request.input).pages.map((value: { pageIndex: number }) => page(value.pageIndex)) },
+    usage: { inputTokens: 100, outputTokens: 100, totalTokens: 200 },
+  }));
+  const provider: StructuredOutputProvider = {
+    partition: () => provider,
+    generateStructured: send,
+  };
+  const input = {
+    job: { id: "job", identityHash: "identity", originalFilename: "source.pdf", expiresAt: 5000 },
+    state, store, provider, isActive: async () => true, assetsReady: true,
+  };
+
+  expect(await advanceBatchExtraction(input)).toMatchObject({ outcome: "advanced", completedPages: EXTRACTION_WAVE_SIZE * 8, totalPages: pageCount });
+  expect(send).toHaveBeenCalledTimes(EXTRACTION_WAVE_SIZE);
+  expect((await store.getJson<typeof state>("job", "extraction/state.json"))?.cursor).toBe(EXTRACTION_WAVE_SIZE * 8);
+
+  expect(await advanceBatchExtraction(input)).toMatchObject({ outcome: "complete", completedPages: pageCount, totalPages: pageCount });
+  expect(send).toHaveBeenCalledTimes(EXTRACTION_WAVE_SIZE + 1);
+  expect(await store.getJson("job", "canonical-book.json")).toMatchObject({ source: { pageCount } });
 });

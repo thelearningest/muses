@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BookJobRepository } from "../../app/lib/book-pipeline/job-repository";
-import { BookOperationRepository } from "../../app/lib/book-pipeline/operation-repository";
+import { BookOperationRepository, STAGE_LEASE_SECONDS } from "../../app/lib/book-pipeline/operation-repository";
 import { MigratedD1 } from "./sqlite-d1";
 
 describe("durable operation ownership against production migrations", () => {
@@ -20,7 +20,7 @@ describe("durable operation ownership against production migrations", () => {
     expect(admitted.filter(Boolean)).toHaveLength(1);
   });
   it("requires confirmation to steal expired ownership and fences late writes", async () => {
-    const old = (await repo.acquire(input))!; now += 121;
+    const old = (await repo.acquire(input))!; now += STAGE_LEASE_SECONDS + 1;
     expect(await repo.acquire(input)).toBeNull();
     const current = (await repo.acquire({ ...input, retryConfirmed: true }))!;
     expect(await repo.renew(old)).toBe(false);
@@ -75,9 +75,9 @@ describe("durable operation ownership against production migrations", () => {
   });
   it("suspends only an expired owner and never a live replacement", async () => {
     const old = (await repo.acquire(input))!;
-    expect(await repo.suspendExpired(old.id)).toBe(false); now += 121;
+    expect(await repo.suspendExpired(old.id)).toBe(false); now += STAGE_LEASE_SECONDS + 1;
     await repo.acquire({ ...input,retryConfirmed: true });
-    expect(await repo.suspendExpired(old.id)).toBe(false); now += 121;
+    expect(await repo.suspendExpired(old.id)).toBe(false); now += STAGE_LEASE_SECONDS + 1;
     expect(await repo.suspendExpired(old.id)).toBe(true);
   });
 });

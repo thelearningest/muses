@@ -73,7 +73,7 @@ export async function paidRequest(fetcher: Fetcher, url: string, apiKey: string,
   const body = JSON.stringify(payload);
   let response: Response;
   try {
-    response = await fetcher(url, { method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, signal: AbortSignal.timeout(120_000), body });
+    response = await fetcher(url, { method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, signal: AbortSignal.timeout(240_000), body });
   } catch {
     console.warn("OpenAI request failed", { category: "transport" });
     throw new OpenAiIndeterminateRequestError();

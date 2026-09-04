@@ -9,7 +9,9 @@ export type BookJobAdvanceResult = { outcome: string; completedBatches?: number;
 export const RESUMABLE_JOB_KEY = "playable-books-active-job:v1";
 export const BROWSER_IDENTITY_KEY = "playable-books-browser-identity:v1";
 export const OCR_RECHECK_MS = 15_000;
-export const ADVANCE_TIMEOUT_MS = 150_000;
+// Longer than the provider deadline plus persistence overhead. The UI polls the
+// durable status independently, so users still see confirmed batch progress.
+export const ADVANCE_TIMEOUT_MS = 270_000;
 
 export type ResumableBookJob = {
   jobId: string;

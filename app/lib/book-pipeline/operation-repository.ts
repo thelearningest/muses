@@ -10,6 +10,10 @@ export type ProviderCall = { id: string; run_id: string; job_id: string; slot: n
 const changed = (r: D1Result) => r.success && Number(r.meta?.changes) === 1;
 const HASH = /^[a-f0-9]{64}$/;
 const STAGES = new Set<BookJobStatus>(["extracting_pages", "mapping_evidence", "building_book_map", "retrieving_quest_evidence", "generating_game", "verifying_quests"]);
+// Provider calls may legitimately run beyond two minutes. Keep ownership longer
+// than the provider deadline so a successful paid result can still be persisted
+// and settled instead of being mislabeled as an interrupted operation.
+export const STAGE_LEASE_SECONDS = 300;
 
 /** Ownership and accounting live in D1; raw responses remain immutable in R2.
  * All guards use the current clock, including after slow provider calls. */
@@ -26,7 +30,7 @@ export class BookOperationRepository {
       WHERE id=? AND status=? AND batch_cursor=? AND cancellation_requested=0 AND expires_at>?
       ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,lease_until=excluded.lease_until,state='running'
       WHERE policy_hash=excluded.policy_hash AND (state='idle' OR (state='running' AND lease_until<=? AND ?=1))
-    `).bind(id,input.stage,input.cursor,input.policyHash,owner,now+120,input.jobId,input.stage,input.cursor,now,now,input.retryConfirmed ? 1 : 0).run();
+    `).bind(id,input.stage,input.cursor,input.policyHash,owner,now+STAGE_LEASE_SECONDS,input.jobId,input.stage,input.cursor,now,now,input.retryConfirmed ? 1 : 0).run();
     return changed(result) ? { id, jobId: input.jobId, stage: input.stage, cursor: input.cursor, owner } : null;
   }
 
@@ -54,7 +58,7 @@ export class BookOperationRepository {
   }
   async renew(run: StageOwner): Promise<boolean> {
     const now = this.clock();
-    return changed(await this.db.prepare(`UPDATE book_stage_runs SET lease_until=? WHERE id=? AND ${this.guard()}`).bind(now+120,run.id,...this.guardValues(run,now)).run());
+    return changed(await this.db.prepare(`UPDATE book_stage_runs SET lease_until=? WHERE id=? AND ${this.guard()}`).bind(now+STAGE_LEASE_SECONDS,run.id,...this.guardValues(run,now)).run());
   }
   async release(run: StageOwner): Promise<boolean> {
     // A finished invocation can release only its own token. No expired/new owner
@@ -77,7 +81,7 @@ export class BookOperationRepository {
     const v = input.visual;
     const visual = v ? { micros: v.micros, input: v.input, output: v.output, calls: 1 } : {};
     const prior = await this.latestCall(run,input.slot); const now = this.clock();
-    if (prior && (prior.request_hash !== input.requestHash || prior.attempt >= 1 || prior.state === "complete" || !input.retryConfirmed || (prior.state === "pending" && prior.created_at + 120 > now))) return null;
+    if (prior && (prior.request_hash !== input.requestHash || prior.attempt >= 1 || prior.state === "complete" || !input.retryConfirmed || (prior.state === "pending" && prior.created_at + STAGE_LEASE_SECONDS > now))) return null;
     const id = crypto.randomUUID(); const attempt = prior ? prior.attempt+1 : 0;
     const resultPath = `operations/calls/${id}.json`;
     const result = await this.db.prepare(`

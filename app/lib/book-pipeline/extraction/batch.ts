@@ -13,6 +13,12 @@ import type { ExtractionAsset, ExtractionLimits, ExtractionPageRequest } from ".
 export const BATCH_PROMPT_VERSION = "book-intelligence-batch-v1";
 const INITIAL_OUTPUT_TOKENS = 6_000;
 const RETRY_OUTPUT_TOKENS = 10_000;
+// A Sites request runs on Cloudflare Workers, which admits at most six
+// simultaneous outbound connections while response headers are pending.
+// Finish one observable wave per request so the browser receives durable
+// progress instead of waiting for the entire book (and losing it to one late
+// batch failure).
+export const EXTRACTION_WAVE_SIZE = 6;
 export const BATCH_STATE_PATH = "extraction/state.json";
 export type BatchExtractionState = {
   version: 4; promptVersion: typeof BATCH_PROMPT_VERSION; model: "gpt-5.6-sol";
@@ -27,6 +33,11 @@ type SavedBatch = {
   pages: number[];
   response: { responseId: string; data: BatchOutput; usage: { inputTokens: number; outputTokens: number; totalTokens: number } };
 };
+
+function isSavedBatch(value: SavedBatch | null, state: BatchExtractionState, pages: number[]): value is SavedBatch {
+  return value?.version === 1 && value.promptVersion === BATCH_PROMPT_VERSION && value.fingerprint === state.fingerprint &&
+    value.pages.length === pages.length && value.pages.every((page, offset) => page === pages[offset]);
+}
 const entrySchema = z.object({
   pageIndex: z.number().int().min(0).max(299),
   role: z.enum(["lesson", "context", "decorative", "blank", "unreadable"]),
@@ -134,15 +145,15 @@ export async function advanceBatchExtraction(input: {
   // model-latency wave. Let bounded browser preparation finish, then process the
   // complete book concurrently in a single wave.
   if (requests.length) return { outcome: "awaiting_extraction_assets" as const, requests, sourceFingerprint: state.fingerprint };
-  const readyGroups = groups.map((pages, index) => ({ pages, index }));
-  let processed = 0;
+  const savedBefore = await mapConcurrent(groups, 16, (pages, index) => store.getJson<SavedBatch>(job.id, `extraction/batches/${index}.json`));
+  const completedGroups = new Set(savedBefore.flatMap((saved, index) => isSavedBatch(saved, state, groups[index]) ? [index] : []));
+  const readyGroups = groups.map((pages, index) => ({ pages, index })).filter(({ index }) => !completedGroups.has(index)).slice(0, EXTRACTION_WAVE_SIZE);
   let progress = Promise.resolve();
-  const responses = await mapConcurrent(readyGroups, state.concurrency, async ({ pages, index }) => {
+  await mapConcurrent(readyGroups, Math.min(state.concurrency, EXTRACTION_WAVE_SIZE), async ({ pages, index }) => {
     if (!await input.isActive()) throw new Error("Inactive extraction");
     const batchPath = `extraction/batches/${index}.json`;
     const saved = await store.getJson<SavedBatch>(job.id, batchPath);
-    if (saved?.version === 1 && saved.promptVersion === BATCH_PROMPT_VERSION && saved.fingerprint === state.fingerprint &&
-      saved.pages.length === pages.length && saved.pages.every((page, offset) => page === pages[offset])) {
+    if (isSavedBatch(saved, state, pages)) {
       return { ...saved.response, data: validateBatchOutput(saved.response.data, pages) };
     }
     const assets = await Promise.all(pages.map((page) => store.getJson<ExtractionAsset>(job.id, `extraction/assets/${page}-0.json`)));
@@ -172,8 +183,8 @@ export async function advanceBatchExtraction(input: {
         existing.pages.length !== pages.length || existing.pages.some((page, offset) => page !== pages[offset])) throw new Error("Conflicting extraction batch");
       return { ...existing.response, data: validateBatchOutput(existing.response.data, pages) };
     }
-    processed += pages.length;
-    const completed = processed;
+    completedGroups.add(index);
+    const completed = [...completedGroups].reduce((sum, groupIndex) => sum + groups[groupIndex].length, 0);
     progress = progress.then(async () => {
       const latest = await store.getJsonVersion<BatchExtractionState>(job.id, BATCH_STATE_PATH);
       if (latest && await input.isActive()) await store.putJsonVersion(job.id, BATCH_STATE_PATH, { ...latest.value, cursor: Math.max(latest.value.cursor, completed) }, latest.etag, job.expiresAt);
@@ -182,12 +193,19 @@ export async function advanceBatchExtraction(input: {
     return { ...response, data };
   });
   if (!await input.isActive()) return { outcome: "inactive" as const };
-  const artifacts = batchArtifacts(state, job.originalFilename, responses.map((response) => response.data));
+  const savedAfter = await mapConcurrent(groups, 16, (pages, index) => store.getJson<SavedBatch>(job.id, `extraction/batches/${index}.json`));
+  const completedPages = savedAfter.reduce((sum, saved, index) => sum + (isSavedBatch(saved, state, groups[index]) ? groups[index].length : 0), 0);
+  if (completedPages < state.pageCount) return { outcome: "advanced" as const, completedPages, totalPages: state.pageCount };
+  const allResponses = savedAfter.map((saved, index) => {
+    if (!isSavedBatch(saved, state, groups[index])) throw new Error("Missing completed extraction batch");
+    return { ...saved.response, data: validateBatchOutput(saved.response.data, groups[index]) };
+  });
+  const artifacts = batchArtifacts(state, job.originalFilename, allResponses.map((response) => response.data));
   for (const [path, value] of Object.entries({ "canonical-book.json": artifacts.canonical, "evidence/0.json": { cards: artifacts.cards },
     "evidence-manifest.json": { batchCount: 1 }, "book-map.json": artifacts.bookMap,
     "extraction-visuals.json": { candidates: artifacts.visualCandidates } })) await store.putJson(job.id, path, value, job.expiresAt);
   const latest = await store.getJsonVersion<BatchExtractionState>(job.id, BATCH_STATE_PATH);
-  const usage = responses.reduce((sum, response) => ({ calls: sum.calls + 1, inputTokens: sum.inputTokens + response.usage.inputTokens,
+  const usage = allResponses.reduce((sum, response) => ({ calls: sum.calls + 1, inputTokens: sum.inputTokens + response.usage.inputTokens,
     outputTokens: sum.outputTokens + response.usage.outputTokens,
     estimatedMicros: sum.estimatedMicros + Math.ceil(response.usage.inputTokens * 5 + response.usage.outputTokens * 20) }),
   { calls: 0, inputTokens: 0, outputTokens: 0, estimatedMicros: 0 });
