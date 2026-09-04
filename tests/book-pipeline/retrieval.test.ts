@@ -14,6 +14,12 @@ function retrievalFixture(fetcher: (_url: string, init?: RequestInit) => Promise
 }
 
 describe("hybrid quest retrieval", () => {
+  it.skipIf(process.env.RUN_PAID_CONCURRENCY_AUDIT !== "1")("known duplicate-paid gap: simultaneous embedding retrieval", async () => {
+    const fetcher = vi.fn(async () => Response.json({ data: [{ index: 0, embedding: [1] }, { index: 1, embedding: [1] }] }));
+    const input = retrievalFixture(fetcher);
+    await Promise.all([retrieveQuestEvidenceStage(input), retrieveQuestEvidenceStage(input)]);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it("retains reservations and requires explicit retry after embedding transport failure", async () => {
     const input = retrievalFixture(async () => { throw new TypeError("connection lost"); });
     await retrieveQuestEvidenceStage(input);

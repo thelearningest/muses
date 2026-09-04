@@ -26,6 +26,21 @@ function map(): BookMap {
 }
 
 describe("evidence-driven generation", () => {
+  // Known failing production-acceptance check, not a passing unit guarantee.
+  // Enable RUN_PAID_CONCURRENCY_AUDIT=1 until durable ownership is implemented.
+  it.skipIf(process.env.RUN_PAID_CONCURRENCY_AUDIT !== "1")("known duplicate-paid gap: simultaneous game generation", async () => {
+    const game: GameContent = { sourceTitle: "Source", title: "Game", subtitle: "Learn", setting: "Lab", quests: Array.from({ length: 4 }, (_, index) => quest(index)) };
+    const generate = vi.fn(async () => ({ responseId: "resp", data: game, usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 } }));
+    let committed = false;
+    const input: Parameters<typeof generateGameStage>[0] = {
+      job: { id: "job", identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 }, bookMap: map(), contracts: contracts(),
+      provider: { generateStructured: generate } as unknown as StructuredOutputProvider,
+      repository: { commitStage: vi.fn(async () => { if (committed) return false; committed = true; return true; }), markRecoverable: vi.fn(), appendOpenAiRequestId: vi.fn(), reserveProviderCost: vi.fn().mockResolvedValue(true), reconcileProviderCost: vi.fn() },
+      store: { putJson: vi.fn() }, config: { model: "gpt-5.6-sol", reasoningEffort: "high", reserveCostUnits: 100, maxCostUnits: 1000 }, now: 1, isActive: async () => !committed,
+    };
+    await Promise.all([generateGameStage(input), generateGameStage(input)]);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
   it("retains the paid reservation when usage persistence fails", async () => {
     const repository = { commitStage: vi.fn(), markRecoverable: vi.fn(), appendOpenAiRequestId: vi.fn(), reserveProviderCost: vi.fn().mockResolvedValue(true), reconcileProviderCost: vi.fn().mockRejectedValueOnce(new Error("Database unavailable")) };
     const provider = { generateStructured: vi.fn(async () => ({ responseId: "resp", data: {}, usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 } })) } as unknown as StructuredOutputProvider;
