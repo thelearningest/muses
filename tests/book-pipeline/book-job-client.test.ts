@@ -181,14 +181,15 @@ describe("resumable book job client", () => {
     expect(acknowledge).not.toHaveBeenCalled();
   });
 
-  it("pauses a manual retry without creating or advancing a different job", async () => {
+  it("uses one bounded automatic recovery, then pauses without creating a different job", async () => {
     const advance = vi.fn();
     const result = await driveBookJob({
       job, client: { status: vi.fn(async () => ({ jobId: job.jobId, stage: "interrupted" as const, recoverable: true, error: { code: "manual_retry_required", message: "Review and retry." } })), advance, acknowledge: vi.fn() },
       signal: new AbortController().signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(), sleep: vi.fn(),
     });
     expect(result).toBe("paused");
-    expect(advance).not.toHaveBeenCalled();
+    expect(advance).toHaveBeenCalledOnce();
+    expect(advance).toHaveBeenCalledWith(job, true);
   });
 
   it("cancels the current job and always clears resumable local state", async () => {

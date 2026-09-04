@@ -189,6 +189,7 @@ export async function driveBookJob(input: {
   let preparation: Promise<void> | undefined;
   let preparationError: unknown;
   let connectionRecoveries = 0;
+  let automaticPaidRecoveryUsed = false;
   const prepared = new Set<string>();
   let preparationTotal = 0;
   try {
@@ -209,7 +210,20 @@ export async function driveBookJob(input: {
       await persistValidGameThenAcknowledge({ status, job: input.job, saveGame: input.saveGame, acknowledge: (job) => input.client.acknowledge(job), clear: input.clear });
       return "complete";
     }
-    if (action === "pause") return "paused";
+    if (action === "pause") {
+      // The server journals every paid call and admits at most one confirmed
+      // retry for the same operation. Use that bounded recovery automatically
+      // so a transient hosted timeout does not make the learner babysit a job.
+      // A second interruption still pauses for explicit operator review.
+      if (!automaticPaidRecoveryUsed && status.error?.code === "manual_retry_required") {
+        automaticPaidRecoveryUsed = true;
+        await input.client.advance(input.job, true);
+        lastAdvanceAt = now();
+        await sleep(0, input.signal);
+        continue;
+      }
+      return "paused";
+    }
     if (action === "clear") {
       input.clear();
       if (status.stage === "failed" || status.stage === "capacity_reached") throw new BookJobClientError(status.error?.code ?? "job_failed", status.error?.message ?? "This book could not be processed safely.", 422);
