@@ -8,6 +8,7 @@ import {
 import {
   OpenAiIndeterminateRequestError,
   OpenAiResponsesProvider,
+  type StructuredOutputProvider,
 } from "../../app/lib/book-pipeline/providers/openai";
 
 const canonical: CanonicalBook = {
@@ -97,6 +98,45 @@ describe("OpenAI evidence mapping", () => {
     expect(() => validateEvidenceCards([{ ...card, sources: [{ ...card.sources[0], canonicalBlockIds: ["missing"] }] }], canonical)).toThrow(/block/i);
     expect(() => validateEvidenceCards([{ ...card, sources: [{ ...card.sources[0], pageEnd: 2 }] }], canonical)).toThrow(/page/i);
     expect(() => validateEvidenceCards([{ ...card, sources: [{ ...card.sources[0], boundedExcerpt: "x".repeat(600) }] }], canonical)).toThrow(/excerpt/i);
+  });
+
+  it("rejects existing blocks attributed to the wrong PDF page", () => {
+    const book = { ...canonical, source: { ...canonical.source, pageCount: 2 } };
+    expect(() => validateEvidenceCards([{ ...card, sources: [{ ...card.sources[0], pageStart: 1, pageEnd: 1 }] }], book)).toThrow(/page/i);
+  });
+
+  it("rejects fabricated excerpts and unsupported empty source lists", () => {
+    expect(() => validateEvidenceCards([{ ...card, sources: [{ ...card.sources[0], boundedExcerpt: "The author recommends guessing without observing." }] }], canonical)).toThrow(/excerpt/i);
+    expect(() => validateEvidenceCards([{ ...card, sources: [] }], canonical)).toThrow(/source/i);
+  });
+
+  it("requires integer page anchors and accepts only source-faithful whitespace normalization", () => {
+    expect(() => validateEvidenceCards([{ ...card, sources: [{ ...card.sources[0], pageStart: Number.NaN }] }], canonical)).toThrow(/page/i);
+    expect(() => validateEvidenceCards([{ ...card, sources: [{ ...card.sources[0], pageStart: 0.5 }] }], canonical)).toThrow(/page/i);
+    expect(validateEvidenceCards([{ ...card, sources: [{ ...card.sources[0], boundedExcerpt: "Record\n observations first." }] }], canonical)).toHaveLength(1);
+  });
+
+  it("rejects a card borrowing evidence from another section in the same batch", async () => {
+    const book: CanonicalBook = { ...canonical, source: { ...canonical.source, pageCount: 2 },
+      pages: [...canonical.pages, { index: 1, blockIds: ["h-2", "p-2"], visualReferences: [], warnings: [] }],
+      blocks: [...canonical.blocks,
+        { ...canonical.blocks[0], id: "h-2", pageIndex: 1, text: "Compare" },
+        { ...canonical.blocks[1], id: "p-2", pageIndex: 1, text: "Compare alternative explanations." }],
+    };
+    const putJson = vi.fn();
+    const result = await mapEvidenceBatch({
+      job: { id: "job-1", status: "mapping_evidence", batchCursor: 0, identityHash: "identity", expiresAt: 10_000 }, canonical: book,
+      provider: { async generateStructured<T>(request: Parameters<StructuredOutputProvider["generateStructured"]>[0]) {
+        const sectionId = JSON.parse(request.input).sections[0].id;
+        return { responseId: "resp", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, data: { cards: [{ ...card, sectionId,
+          sources: [{ pageStart: 1, pageEnd: 1, canonicalBlockIds: ["p-2"], boundedExcerpt: "Compare alternative explanations." }] }] } as T };
+      } },
+      repository: { commitStage: vi.fn(), markRecoverable: vi.fn(), appendOpenAiRequestId: vi.fn() },
+      store: { getJson: vi.fn(async () => null), putJson },
+      config: { model: "gpt-5.4-mini", reasoningEffort: "low", sectionsPerBatch: 3 }, now: 1_000,
+    });
+    expect(result.outcome).toBe("interrupted");
+    expect(putJson).not.toHaveBeenCalled();
   });
 
   it("requires manual retry for an indeterminate OpenAI outcome", async () => {

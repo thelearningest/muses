@@ -5,6 +5,8 @@ import { validateGameAgainstContracts } from "./generation-stage";
 import type { BookJobRepository } from "./job-repository";
 import { OpenAiIndeterminateRequestError, type StructuredOutputProvider } from "./providers/openai";
 import { QUEST_VERIFICATION_SCHEMA } from "./verification-schema";
+import { GAME_RENDERER_RULES } from "../../game-capabilities";
+import { MODEL_EVIDENCE_RULES, modelEvidenceContract } from "./model-contract";
 
 type Verdict = { accepted: boolean; issues: string[] };
 type StorePort = { putJson(jobId: string, path: string, value: unknown, expiresAt: number): Promise<void> };
@@ -21,8 +23,8 @@ async function verifyQuest(input: { quest: Quest; contract: QuestEvidenceContrac
     reasoningEffort: input.reasoningEffort,
     schemaName: "quest_verification",
     schema: QUEST_VERIFICATION_SCHEMA,
-    instructions: "Check only whether this quest's claims, correct choices, feedback, actions, and page anchors are fully supported by the supplied evidence contract. Reject unsupported embellishment. Do not reward plausibility without evidence.",
-    input: JSON.stringify({ quest: input.quest, evidenceContract: input.contract }),
+    instructions: `Verify factual grounding, answer correctness and playability of the CURRENT QUEST, not the quality of unused evidence-contract assertions. Combine text excerpts and image evidence: a claim explicitly supported by text need not also be independently measurable in a photograph. If a contract assertion is doubtful, reject only when the current quest relies on that assertion as a source fact. Reject unsupported source claims and questions requiring absent controls or unseen details. Do not reject clearly original fictional scenarios, XP, proposed repairs or schematic design choices merely because they are not in the book. Static observation-topic labels are allowed and are not promised interactive tools. Evaluate wrong choices as distractors, not assertions that must be true; their feedback must correctly explain why they are wrong. A correct answer must be best among the three choices under the stated scenario criteria, not the only conceivable real-world design. Report only concrete defects in the current quest, identifying the offending field and claim; do not include passing observations or stylistic preferences in issues. Accept with an empty issues array when no such defect remains. ${MODEL_EVIDENCE_RULES}\n${GAME_RENDERER_RULES}`,
+    input: JSON.stringify({ quest: input.quest, evidenceContract: modelEvidenceContract(input.contract) }),
     safetyIdentifier: input.identityHash,
   });
 }
@@ -33,8 +35,8 @@ async function repairQuest(input: { quest: Quest; contract: QuestEvidenceContrac
     reasoningEffort: input.reasoningEffort,
     schemaName: "repaired_quest",
     schema: QUEST_SCHEMA,
-    instructions: "Repair only the supplied quest. Resolve every listed verification issue using only the evidence contract. Preserve its id and number. Return the complete repaired quest and no commentary.",
-    input: JSON.stringify({ quest: input.quest, evidenceContract: input.contract, issues: input.issues }),
+    instructions: `Repair only the supplied quest. Resolve every listed verification issue using only the evidence contract. Preserve its id, number and valid page anchors. Return the complete repaired quest and no commentary. ${MODEL_EVIDENCE_RULES}\n${GAME_RENDERER_RULES}`,
+    input: JSON.stringify({ quest: input.quest, evidenceContract: modelEvidenceContract(input.contract), issues: input.issues }),
     safetyIdentifier: input.identityHash,
   });
   const parsed = parseQuest(candidate);

@@ -1,3 +1,5 @@
+import { VISUAL_LABEL_LIMITS } from "./game-capabilities";
+
 export type ArtifactType =
   | "gate"
   | "switchboard"
@@ -96,7 +98,7 @@ export const QUEST_SCHEMA = {
     clue: stringField,
     artifact: { type: "string", enum: ["gate", "switchboard", "memory", "constraints", "console", "kiosk"] },
     xp: { type: "integer", minimum: 25, maximum: 200 },
-    observationTools: { type: "array", minItems: 3, maxItems: 3, items: stringField },
+    observationTools: { type: "array", minItems: 3, maxItems: 3, items: { ...stringField, maxLength: VISUAL_LABEL_LIMITS.observation } },
     diagnosis: { type: "array", minItems: 3, maxItems: 3, items: choiceSchema },
     repairs: { type: "array", minItems: 3, maxItems: 3, items: choiceSchema },
     principle: {
@@ -113,10 +115,10 @@ export const QUEST_SCHEMA = {
         mode: { type: "string", enum: ["diagram", "3d"] },
         form: { type: "string", enum: ["portal", "console", "assembly", "network", "sequence", "display"] },
         accent: { type: "string", enum: ["red", "yellow", "green"] },
-        title: stringField,
-        problemLabel: stringField,
-        repairLabel: stringField,
-        elements: { type: "array", minItems: 3, maxItems: 3, items: stringField },
+        title: { ...stringField, maxLength: VISUAL_LABEL_LIMITS.title },
+        problemLabel: { ...stringField, maxLength: VISUAL_LABEL_LIMITS.status },
+        repairLabel: { ...stringField, maxLength: VISUAL_LABEL_LIMITS.status },
+        elements: { type: "array", minItems: 3, maxItems: 3, items: { ...stringField, maxLength: VISUAL_LABEL_LIMITS.element } },
       },
     },
     sourceAnchors: {

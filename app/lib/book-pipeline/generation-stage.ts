@@ -1,18 +1,22 @@
 import { GAME_CONTENT_SCHEMA, parseGameContent, type GameContent } from "../../game-package";
 import type { BookMap, QuestEvidenceContract } from "./contracts";
+import { GAME_RENDERER_RULES, questRendererIssues } from "../../game-capabilities";
+import { MODEL_EVIDENCE_RULES, modelEvidenceContract } from "./model-contract";
 import type { ReasoningEffort } from "./config";
 import type { BookJobRepository } from "./job-repository";
 import { OpenAiIndeterminateRequestError, type StructuredOutputProvider, type InputImage } from "./providers/openai";
 
 export const GAME_GENERATION_INSTRUCTIONS = `Create an original, source-grounded browser learning RPG from only the supplied book map and quest evidence contracts.
 Create one quest per contract, in the supplied sequence (four to nine total). Each quest follows inspect, diagnose, repair, reward. Make players apply the central claim through the permitted player actions. Each diagnosis and repair has exactly three choices and exactly one correct answer. Wrong-choice feedback explains the misconception.
-Use direct second-person language, concrete nouns, concise practical stakes, and original expression. Do not quote source excerpts. Use only supplied evidence; never invent citations or claims. Convert zero-based evidence pages to one-based source anchors.
+Use direct second-person language, concrete nouns, concise practical stakes, and original expression. Do not quote source excerpts. Never invent citations or source claims.
+${MODEL_EVIDENCE_RULES}
+${GAME_RENDERER_RULES}
 Create a distinct visual brief for every quest and include at least one 3d visual. Verified visual annotations are private source references: use their supported relationships to design original diagrams and interactions. Respect every listed limitation. Reference-only annotations cannot be the sole basis of a scored answer. Do not copy the book's artwork or invent details from a visual description. The browser engine renders your structured game content; do not output application code or image URLs. Return only the strict structured output.`;
 
 export type GenerationInput = {
   book: { title: string; thesis: string; learningArc: string[] };
   concepts: Array<{ id: string; name: string; summary: string }>;
-  questContracts: QuestEvidenceContract[];
+  questContracts: ReturnType<typeof modelEvidenceContract>[];
 };
 
 export function buildGenerationInput(bookMap: BookMap, contracts: QuestEvidenceContract[]): GenerationInput {
@@ -20,7 +24,7 @@ export function buildGenerationInput(bookMap: BookMap, contracts: QuestEvidenceC
   return {
     book: { title: bookMap.bookTitle ?? "Uploaded book", thesis: bookMap.thesis, learningArc: bookMap.learningArc },
     concepts: bookMap.concepts.filter((concept) => selected.has(concept.id)).map(({ id, name, summary }) => ({ id, name, summary })),
-    questContracts: contracts,
+    questContracts: contracts.map(modelEvidenceContract),
   };
 }
 
@@ -36,6 +40,7 @@ export function validateGameAgainstContracts(game: GameContent, contracts: Quest
   if (!game.quests.some((quest) => quest.visual?.mode === "3d")) issues.push("missing_3d_visual");
   const visualSignatures = new Set<string>();
   game.quests.forEach((quest, index) => {
+    issues.push(...questRendererIssues(quest).map((issue) => `quest_${index}:${issue}`));
     if (!quest.visual) {
       issues.push(`quest_${index}:missing_visual`);
       return;

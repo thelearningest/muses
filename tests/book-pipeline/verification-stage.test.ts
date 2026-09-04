@@ -33,12 +33,37 @@ function response<T>(data: T) {
 }
 
 describe("targeted quest verification", () => {
+  it("rejects an off-by-one repair without asking the model to approve invalid anchors", async () => {
+    const original = game();
+    const invalid = { ...original.quests[1], sourceAnchors: [{ label: "Wrong index", pageStart: 1, pageEnd: 1 }] };
+    const outputs: unknown[] = [{ accepted: false, issues: ["repair needed"] }, invalid];
+    const provider = { generateStructured: vi.fn(async () => response(outputs.shift())) } as unknown as StructuredOutputProvider;
+    const store = { putJson: vi.fn() };
+    const result = await verifyNextQuestStage({
+      job: { id: "job", batchCursor: 1, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 },
+      game: original, contracts: makeContracts(), provider, repository: repository(), store,
+      config: { model: "gpt-5.6-luna", reasoningEffort: "none", maxRepairAttempts: 1 }, now: 1,
+    });
+    expect(result.outcome).toBe("terminal");
+    expect(provider.generateStructured).toHaveBeenCalledTimes(2);
+    expect(store.putJson).not.toHaveBeenCalled();
+  });
+
   it("repairs only the failing quest and leaves passing quests unchanged", async () => {
     const original = game();
     const repaired: Quest = { ...original.quests[1], story: "A corrected grounded situation." };
     const requests: string[] = [];
     const outputs: unknown[] = [{ accepted: false, issues: ["unsupported claim"] }, repaired, { accepted: true, issues: [] }];
-    const provider: StructuredOutputProvider = { async generateStructured<T>(input: Parameters<StructuredOutputProvider["generateStructured"]>[0]) { requests.push(input.schemaName); return response(outputs.shift() as T); } };
+    const provider: StructuredOutputProvider = { async generateStructured<T>(input: Parameters<StructuredOutputProvider["generateStructured"]>[0]) {
+      requests.push(input.schemaName);
+      const payload = JSON.parse(input.input);
+      expect(payload.evidenceContract.pageNumbering).toBe("one_based_pdf_pages");
+      expect(payload.evidenceContract.sources[0].pageStart).toBe(2);
+      expect(payload.quest.sourceAnchors[0].pageStart).toBe(2);
+      expect(input.instructions).toContain("original fiction");
+      expect(input.instructions).toContain("static observation-topic labels");
+      return response(outputs.shift() as T);
+    } };
     const writes: Array<[string, unknown]> = [];
     const result = await verifyNextQuestStage({
       job: { id: "job", batchCursor: 1, identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 }, game: original, contracts: makeContracts(), provider,

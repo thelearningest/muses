@@ -39,6 +39,9 @@ describe("evidence-driven generation", () => {
     expect(supplied).not.toMatch(/%PDF|UNRELATED_FULL_TRANSCRIPT|chapters/);
     expect(Object.keys(JSON.parse(supplied))).toEqual(["book", "concepts", "questContracts"]);
     expect(buildGenerationInput(map(), contracts()).questContracts).toHaveLength(4);
+    const first = JSON.parse(supplied).questContracts[0];
+    expect(first.pageNumbering).toBe("one_based_pdf_pages");
+    expect(first.sources[0].pageStart).toBe(1);
   });
 
   it("fails deterministic validation for unsafe anchors, duplicate concepts/visuals, or missing 3D", () => {
@@ -47,5 +50,12 @@ describe("evidence-driven generation", () => {
     expect(validateGameAgainstContracts({ ...base, quests: base.quests.map((item) => ({ ...item, principle: { ...item.principle, name: "same" } })) }, contracts())).toContain("duplicate_concepts");
     expect(validateGameAgainstContracts({ ...base, quests: base.quests.map((item, index) => index ? item : { ...item, visual: { ...item.visual!, elements: ["same", "same", "other"] } }) }, contracts())).toContain("quest_0:duplicate_visual_labels");
     expect(validateGameAgainstContracts({ ...base, quests: base.quests.map((item) => ({ ...item, visual: { ...item.visual!, mode: "diagram" } })) }, contracts())).toContain("missing_3d_visual");
+    const tooLong = structuredClone(base);
+    tooLong.quests[0].visual!.elements[0] = "x".repeat(49);
+    expect(validateGameAgainstContracts(tooLong, contracts())).toContain("quest_0:visual_label_too_long");
+    const unsupported = structuredClone(base);
+    unsupported.quests[0].clue = "Move the slider to inspect the grid.";
+    expect(validateGameAgainstContracts(unsupported, contracts())).toContain("quest_0:unsupported_renderer_control");
+    expect(validateGameAgainstContracts(base, contracts())).toEqual([]);
   });
 });
