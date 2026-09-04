@@ -48,7 +48,7 @@ it.each([false, true])("extracts ready groups and publishes all evidence atomica
       provider: durable.journal.structured({ generateStructured: send } as StructuredOutputProvider), isActive: durable.isActive };
     if (partial) {
       expect(await advanceBatchExtraction(input)).toMatchObject({ outcome: "awaiting_extraction_assets", requests: Array.from({ length: 8 }, (_, index) => expect.objectContaining({ pageIndex: index + 8 })) });
-      expect(send).toHaveBeenCalledOnce();
+      expect(send).not.toHaveBeenCalled();
       expect(await store.getJson("job", "canonical-book.json")).toBeNull();
       await prepare(8, 16);
     }

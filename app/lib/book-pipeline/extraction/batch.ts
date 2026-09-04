@@ -98,7 +98,10 @@ export async function advanceBatchExtraction(input: {
   const requests: ExtractionPageRequest[] = indexes.filter((index) => !present[index]).map((pageIndex) => ({ pageIndex, revision: 0, parts: 1, allowNative: true, compact: true }));
   const groups = Array.from({ length: Math.ceil(state.pageCount / state.batchSize) }, (_, index) => indexes.slice(index * state.batchSize, (index + 1) * state.batchSize));
   const readyGroups = groups.map((pages, index) => ({ pages, index })).filter((group) => group.pages.every((page) => present[page]));
-  if (!readyGroups.length) return { outcome: "awaiting_extraction_assets" as const, requests, sourceFingerprint: state.fingerprint };
+  // One partial provider wave makes the remaining groups wait for a second full
+  // model-latency wave. Let bounded browser preparation finish, then process the
+  // complete book concurrently in a single wave.
+  if (readyGroups.length !== groups.length) return { outcome: "awaiting_extraction_assets" as const, requests, sourceFingerprint: state.fingerprint };
   let processed = 0;
   let progress = Promise.resolve();
   const responses = await mapConcurrent(readyGroups, state.concurrency, async ({ pages, index }) => {
@@ -124,7 +127,6 @@ export async function advanceBatchExtraction(input: {
     return { ...response, data };
   });
   if (!await input.isActive()) return { outcome: "inactive" as const };
-  if (readyGroups.length !== groups.length) return { outcome: "awaiting_extraction_assets" as const, requests, sourceFingerprint: state.fingerprint };
   const artifacts = batchArtifacts(state, job.originalFilename, responses.map((response) => response.data));
   for (const [path, value] of Object.entries({ "canonical-book.json": artifacts.canonical, "evidence/0.json": { cards: artifacts.cards },
     "evidence-manifest.json": { batchCount: 1 }, "book-map.json": artifacts.bookMap,
