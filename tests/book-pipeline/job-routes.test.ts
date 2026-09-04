@@ -253,6 +253,15 @@ describe("book job routes", () => {
     expect(serialized).not.toMatch(/mistral|openai|fingerprint|capabilityHash/i);
   });
 
+  it("reports saved page progress for an interrupted extraction", async () => {
+    const dependencies = makeDependencies();
+    const current = await dependencies.repository.getAuthorizedJob("job-1", "capability-hash");
+    dependencies.repository.getAuthorizedJob.mockResolvedValue({ ...current!, status: "manual_retry_required", currentStage: "manual_retry_required", resumeStage: "extracting_pages" });
+    dependencies.store.getJson.mockResolvedValue({ cursor: 144, pageCount: 210 });
+    const response = await createBookJobApi(dependencies).status("job-1", request("/api/book-jobs/job-1", { headers: { authorization: "Bearer capability-token" } }));
+    expect(await response.json()).toMatchObject({ stage: "interrupted", resumeStage: "reading_source", progress: { completedUnits: 144, totalUnits: 210, unit: "pages" } });
+  });
+
   it("makes cancellation and acknowledgment idempotent", async () => {
     const dependencies = makeDependencies();
     const api = createBookJobApi(dependencies);

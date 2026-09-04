@@ -370,15 +370,23 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
         const game = job.status === "complete"
           ? await dependencies.store.getJson(jobId, "game.json")
           : null;
-        const extraction = job.currentStage === "extracting_pages"
+        const activeStage = job.resumeStage ?? job.status;
+        const extraction = activeStage === "extracting_pages"
           ? await dependencies.store.getJson<{ cursor: number; pageCount: number }>(jobId, "extraction/state.json") : null;
+        const verification = activeStage === "verifying_quests"
+          ? await dependencies.store.getJson<{ game?: { quests?: unknown[] } }>(jobId, "game-draft.json") : null;
+        const progress = extraction
+          ? { completedUnits: extraction.cursor, totalUnits: extraction.pageCount, unit: "pages" as const }
+          : verification?.game?.quests?.length
+            ? { completedUnits: job.batchCursor, totalUnits: verification.game.quests.length, unit: "quests" as const }
+            : undefined;
         return json({
           jobId,
           stage: publicStageFor(job.status),
           ...(job.resumeStage ? { resumeStage: publicStageFor(job.resumeStage) } : {}),
           recoverable:
             job.status === "failed_recoverable" || job.status === "manual_retry_required",
-          progress: extraction ? { completedUnits: extraction.cursor, totalUnits: extraction.pageCount } : { completedUnits: job.batchCursor },
+          ...(progress ? { progress } : {}),
           error: job.terminalErrorCategory
             ? { code: job.terminalErrorCategory, message: job.terminalErrorCategory === "extraction_quality_insufficient"
               ? `The book could not be read reliably${extraction ? ` at PDF page ${extraction.cursor + 1}` : ""}, even after higher-resolution retries. No incomplete book was turned into a game.`

@@ -22,7 +22,7 @@ export type BookJobStatusResponse = {
   stage: PublicBookJobStage;
   resumeStage?: PublicBookJobStage;
   recoverable: boolean;
-  progress?: { completedUnits?: number; totalUnits?: number };
+  progress?: { completedUnits?: number; totalUnits?: number; unit?: "pages" | "quests" };
   error?: { code: string; message: string } | null;
   game?: unknown;
 };

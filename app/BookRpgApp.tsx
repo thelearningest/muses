@@ -17,6 +17,7 @@ import {
 import { hasRequiredVisualQuests as hasPlayableVisuals, type GamePackage } from "./game-package";
 import { loadGameLibrary, saveLibraryGame, removeLibraryGame } from "./game-library";
 import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
+import { overallPipelineProgress, pipelineUnitLabel } from "./pipeline-progress";
 
 
 const PIPELINE_STAGES: Array<{ stage: PublicBookJobStage; label: string }> = [
@@ -101,21 +102,10 @@ function JobProgress({ job, status, onRetry, onCancel }: { job: ResumableBookJob
   const current = PIPELINE_STAGES.findIndex((item) => item.stage === effectiveStage);
   const step = current < 0 ? -1 : current <= 1 ? 0 : current <= 6 ? 1 : current <= 8 ? 2 : 3;
   const steps = ["Upload", "Read your book", "Create quests", "Check answers"];
-  const totalPages = status?.progress?.totalUnits;
-  const reportedPages = status?.progress?.completedUnits ?? 0;
-  const readingComplete = current >= 4;
-  const showReadingProgress = step === 1 && (current >= 2 || interrupted);
-  const completedPages = totalPages
-    ? Math.min(totalPages, Math.max(0, readingComplete ? totalPages : reportedPages))
-    : 0;
-  const percent = totalPages ? Math.round((completedPages / totalPages) * 100) : 0;
-  const progressLabel = interrupted
-    ? "Reading paused"
-    : readingComplete
-      ? PIPELINE_STAGES[current]?.label ?? "Pages read"
-      : totalPages
-        ? "Reading pages"
-        : "Preparing pages";
+  const percent = overallPipelineProgress(effectiveStage, status?.progress);
+  const units = pipelineUnitLabel(status?.progress);
+  const activity = PIPELINE_STAGES[current]?.label ?? "Preparing your book";
+  const progressLabel = interrupted ? `${activity} paused` : activity;
   return (
     <section className="job-progress" aria-live="polite" aria-labelledby="job-progress-title">
       <div className="job-progress-heading">
@@ -129,15 +119,13 @@ function JobProgress({ job, status, onRetry, onCancel }: { job: ResumableBookJob
           </li>
         ))}
       </ol>
-      {showReadingProgress && (
-        <div className="reading-progress">
-          <div className="reading-progress-copy">
-            <span>{progressLabel}</span>
-            {totalPages ? <strong>{completedPages} of {totalPages} pages · {percent}%</strong> : <strong>Starting…</strong>}
-          </div>
-          <progress aria-label={totalPages ? `${completedPages} of ${totalPages} pages read` : "Preparing pages"} max={totalPages ?? 1} value={completedPages} />
+      <div className="pipeline-progress">
+        <div className="pipeline-progress-copy">
+          <span>{progressLabel}</span>
+          <strong>{units ? `${units} · ` : ""}{percent}% overall</strong>
         </div>
-      )}
+        <progress aria-label={`${progressLabel}, ${percent}% overall`} max={100} value={percent} />
+      </div>
       <p className="generation-note">Keep this tab open while we prepare your game. This can take a few minutes.</p>
       {interrupted && <p className="job-interruption">Your completed steps are saved. Try again to continue from here.</p>}
       <div className="job-actions">

@@ -61,6 +61,7 @@ export type PublicBookJobProgress = {
   recoverable: boolean;
   completedUnits?: number;
   totalUnits?: number;
+  unit?: "pages" | "quests";
   retryAfterSeconds?: number;
 };
 

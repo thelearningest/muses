@@ -335,14 +335,15 @@ button:disabled {
   margin: 0.75rem 0;
 }
 
-.reading-progress {
+.pipeline-progress {
   margin: 1.25rem 0 1.5rem;
 }
 
-.reading-progress-copy {
+.pipeline-progress-copy {
   align-items: baseline;
   color: var(--yellow);
   display: flex;
+  flex-wrap: wrap;
   font-family: var(--mono);
   font-size: 0.68rem;
   gap: 1rem;
@@ -352,13 +353,14 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.reading-progress-copy strong {
+.pipeline-progress-copy strong {
   color: var(--white);
   font-weight: 400;
+  margin-left: auto;
   text-align: right;
 }
 
-.reading-progress progress {
+.pipeline-progress progress {
   appearance: none;
   background: #45443f;
   border: 0;
@@ -367,9 +369,9 @@ button:disabled {
   width: 100%;
 }
 
-.reading-progress progress::-webkit-progress-bar { background: #45443f; }
-.reading-progress progress::-webkit-progress-value { background: var(--yellow); }
-.reading-progress progress::-moz-progress-bar { background: var(--yellow); }
+.pipeline-progress progress::-webkit-progress-bar { background: #45443f; }
+.pipeline-progress progress::-webkit-progress-value { background: var(--yellow); }
+.pipeline-progress progress::-moz-progress-bar { background: var(--yellow); }
 
 .job-actions {
   align-items: center;
