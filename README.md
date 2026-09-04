@@ -5,7 +5,7 @@ A browser RPG studio that turns an authorized PDF into a source-grounded learnin
 ## How book generation works
 
 1. The browser creates a capability-protected job and streams the PDF to temporary R2 storage.
-2. PDF.js prepares bounded pages; Luna extracts text and visual candidates with page anchors and quality flags. Reliable native text can skip OCR. Legacy jobs retain Mistral Batch OCR.
+2. PDF.js prepares bounded pages; new v3 jobs use Sol to extract text with page anchors and quality flags. Uncertain incidental details are logged as omissions, not quiz evidence. Reliable native text can skip OCR. Existing jobs retain their pinned Luna/selective-Sol or Mistral policy.
 3. OpenAI receives bounded sections—not the PDF—to build evidence cards.
 4. Deterministic book mapping, selective visual annotation, and lexical-plus-embedding retrieval create four to nine quest evidence contracts.
 5. OpenAI generates from those compact contracts. Each quest is independently verified and only a failing quest may be repaired, at most twice.
@@ -27,7 +27,7 @@ The application is built for OpenAI Sites with these bindings in `.openai/hostin
 - D1 binding `DB` for job state, quotas, cursors, and provider references
 - R2 binding `BOOK_JOBS` for temporary PDFs and intermediate JSON artifacts
 
-Apply both SQL migrations from `drizzle/` to the bound D1 database before enabling generation.
+Apply the SQL migrations from `drizzle/` in order to the bound D1 database before enabling generation.
 
 ### Required server secrets
 
@@ -47,15 +47,15 @@ NEXT_PUBLIC_TURNSTILE_SITE_KEY=
 
 For local development only, Cloudflare's always-pass Turnstile test site key is used automatically when no public key is set. Pair it with Cloudflare's always-pass test secret (`1x0000000000000000000000000000000AA`) locally. Never use test keys for a public deployment.
 
-New jobs default to `BOOK_OCR_PROVIDER=luna` and need no Mistral key. `MISTRAL_API_KEY` is needed only for explicitly selected Mistral ingestion or legacy jobs. The provider-URL HMAC setting is retained for legacy compatibility; it is not a Mistral credential.
+New jobs default to `BOOK_OCR_PROVIDER=luna` and need no Mistral key. This setting is the backward-compatible name for the OpenAI ingestion route; the v3 extraction manifest pins Sol. Visual selection remains Luna. `MISTRAL_API_KEY` is needed only for explicitly selected Mistral ingestion or legacy jobs. The provider-URL HMAC setting is retained for legacy compatibility; it is not a Mistral credential.
 
 ### OpenAI page extraction
 
-The browser prepares one page at a time, using native text only for simple reliable layouts and Luna vision otherwise. Private checkpoints permit resume with the same PDF. Keep the tab open during preparation. All pages must pass validation; two quality refinements are allowed before an explicit incomplete result.
+The browser prepares one page at a time, using native text only for simple reliable layouts and Sol vision otherwise in new v3 jobs. Private checkpoints permit resume with the same PDF. Keep the tab open during preparation. Core explanations, headings, meaningful captions and required diagram labels must pass validation; two quality refinements are allowed before an explicit incomplete result. Uncertain nonessential credits, incidental artwork lettering, decorative type and folios can be omitted without paid retries. Structured omission records stay outside canonical evidence blocks and scored answers. Small text is not automatically nonessential.
 
-Extraction budget defaults: `BOOK_EXTRACTION_MAX_USD=5`, `BOOK_EXTRACTION_INPUT_USD_PER_MILLION=0.20`, `BOOK_EXTRACTION_OUTPUT_USD_PER_MILLION=1.20`. Prices are estimates checked on 2026-09-04, not billing guarantees. Invalid explicit prices fail closed. Unknown calls require explicit retry consent.
+Extraction budget default: `BOOK_EXTRACTION_MAX_USD=5`. New v3 manifests pin Sol prices at $4 input / $20 output per million tokens (input admission includes a conservative 1.25 multiplier). `BOOK_EXTRACTION_INPUT_USD_PER_MILLION=0.20` and `BOOK_EXTRACTION_OUTPUT_USD_PER_MILLION=1.20` describe the legacy Luna price basis, not v3 Sol charges. Prices were checked on 2026-09-04 and are estimates, not billing guarantees. Invalid explicit configuration fails closed. Unknown calls require explicit retry consent. Existing manifests retain their own version, prices, prompts and completed records.
 
-The first real 109-page website test reached Luna without Mistral but failed quality on page 6. Do not treat this as full-book or production acceptance. See `docs/evaluation/2026-09-04-full-book-website-test.md`; selective stronger fallback is proposed, not yet enabled.
+The first real 109-page website test reached Luna without Mistral but failed quality on page 6. A later v2 run paused at 8/109 after a source-fidelity error. Sol-only performed better in the subsequent three-page comparison; v3 implements the user-approved minor-detail omission boundary. Full-book and production acceptance are still pending. See `docs/evaluation/2026-09-04-extraction-accuracy-comparison.md` for the historical comparison.
 
 ### Optional bounded configuration
 

@@ -9,6 +9,8 @@ import { hashPrivateValue } from "../../app/lib/book-pipeline/security";
 import { chunkCanonicalBook } from "../../app/lib/book-pipeline/chunk-book";
 import type { BookJobStatus, BookMap, CanonicalBook, EvidenceCard, QuestEvidenceContract } from "../../app/lib/book-pipeline/contracts";
 import type { GameContent, Quest } from "../../app/game-package";
+import type { VisualState } from "../../app/lib/book-pipeline/visual-agent/schema";
+import { VISUAL_STATE_PATH } from "../../app/lib/book-pipeline/visual-agent/stage";
 import { MigratedD1 } from "./sqlite-d1";
 import { ConditionalR2 } from "./durable-fixture";
 
@@ -41,8 +43,20 @@ describe("actual advance route durable paid-call acceptance", () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); db.close(); });
   function stage(status: BookJobStatus) { db.database.prepare("UPDATE book_jobs SET status=?,current_stage=?").run(status,status); }
   function reply(payload: Record<string,unknown>, data: unknown) {
-    if (Array.isArray(payload.input)) return Response.json({ data: payload.input.map((_,index) => ({ index,embedding: [1,0] })) });
+    if (payload.encoding_format === "float" && Array.isArray(payload.input)) return Response.json({ data: payload.input.map((_,index) => ({ index,embedding: [1,0] })) });
     return Response.json({ id: "resp-test",status: "completed",output_text: JSON.stringify(data),usage: { input_tokens: 100,output_tokens: 10,total_tokens: 110 } });
+  }
+  async function seedVisual(usedCalls = 5) {
+    const expiry = Math.floor(Date.now()/1000)+3600;
+    const state: VisualState = { schemaVersion: 1,promptVersion: "visual-v1",sourceFingerprint: "f",phase: "done",step: 5,pages: [0],queue: [],selectedIds: ["v0"],stopReason: "sampled_selection_complete",
+      usage: { calls: usedCalls,inputTokens: 100,outputTokens: 100,estimatedMicros: 100,reservedMicros: 0 },
+      candidates: [{ id: "v0",pageIndex: 0,title: "Grid",concept: "grid",boxes: [{ x: 0,y: 0,width: 0.5,height: 1 },{ x: 0.5,y: 0,width: 0.5,height: 1 }],evidenceIds: ["b0"],revision: 0,cropHashes: ["hash0","hash1"],verdict: { disposition: "reference_only",evidenceIds: ["b0"],claims: [],reason: "Reference only" } }] };
+    const evidence = structuredClone(contracts);
+    evidence[0].visualAnnotations = [{ visualReferenceId: "v0",description: "Paired reference",source: evidence[0].sources[0],visualAgent: { candidateId: "v0",revision: 0,disposition: "reference_only",limitations: ["Small text is illegible"] } }];
+    await store.putJson("job","quest-evidence.json",{ contracts: evidence },expiry);
+    await store.putJson("job",VISUAL_STATE_PATH,state,expiry);
+    for (let i = 0; i < 2; i++) await store.putJson("job",`visual-agent/assets/v0-r0-${i}-crop.json`,{ id: `v0-r0-${i}-crop`,hash: `hash${i}`,width: 300,height: 200,imageUrl: `data:image/png;base64,${i}`,renderer: "fixture",rotation: 0 },expiry);
+    return state;
   }
   it.each(["mapping_evidence","retrieving_quest_evidence","generating_game","verifying_quests"] as const)("admits exactly one provider call under competing HTTP requests: %s", async (status) => {
     stage(status);
@@ -76,5 +90,41 @@ describe("actual advance route durable paid-call acceptance", () => {
     expect(await (await call()).json()).toMatchObject({ outcome: "interrupted" });
     expect((await call()).status).toBe(409); expect(fetcher).toHaveBeenCalledTimes(1);
     await call(true); await call(true); expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it("journals the final visual-enriched request and replays it without charging or duplicating visual usage", async () => {
+    stage("verifying_quests"); await seedVisual();
+    const fetcher = vi.fn(async (_url: string,init: RequestInit) => {
+      const payload = JSON.parse(String(init.body));
+      expect(payload.model).toBe("gpt-5.6-luna"); expect(payload.reasoning.effort).toBe("none"); expect(payload.max_output_tokens).toBe(1000);
+      expect(payload.visualBudget).toBeUndefined();
+      const images = payload.input[0].content.filter((c: { type: string }) => c.type === "input_image");
+      expect(images.map((i: { image_url: string }) => i.image_url)).toEqual(["data:image/png;base64,0","data:image/png;base64,1"]);
+      expect(payload.input[0].content.some((c: { text?: string }) => c.text?.includes("Small text is illegible"))).toBe(true);
+      return reply(payload,{ accepted: true,issues: [] });
+    });
+    vi.stubGlobal("fetch",fetcher);
+    vi.spyOn(db,"batch").mockRejectedValueOnce(new Error("publication outage"));
+    expect(await (await call()).json()).toMatchObject({ outcome: "interrupted" });
+    expect(await (await call(true)).json()).toMatchObject({ outcome: "advanced" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const ledger = db.database.prepare("SELECT state,visual_budget FROM book_provider_calls").all();
+    expect(ledger).toHaveLength(1); expect(ledger[0].state).toBe("complete");
+    expect(JSON.parse(String(ledger[0].visual_budget))).toEqual({ micros: 37,input: 100,output: 10,calls: 1 });
+    expect((await store.getJson<VisualState>("job",VISUAL_STATE_PATH))?.usage.calls).toBe(5);
+  });
+  it("rejects changed visual pixels on replay without another provider call", async () => {
+    stage("verifying_quests"); const visual = await seedVisual();
+    const fetcher = vi.fn(async (_url: string,init: RequestInit) => reply(JSON.parse(String(init.body)),{ accepted: true,issues: [] })); vi.stubGlobal("fetch",fetcher);
+    vi.spyOn(db,"batch").mockRejectedValueOnce(new Error("publication outage")); await call();
+    visual.candidates[0].cropHashes![0] = "changed-hash";
+    await store.putJson("job",VISUAL_STATE_PATH,visual,Math.floor(Date.now()/1000)+3600);
+    await store.putJson("job","visual-agent/assets/v0-r0-0-crop.json",{ id: "v0-r0-0-crop",hash: "changed-hash",width: 300,height: 200,imageUrl: "data:image/png;base64,CHANGED",renderer: "fixture",rotation: 0 },Math.floor(Date.now()/1000)+3600);
+    expect(await (await call(true)).json()).toMatchObject({ outcome: "interrupted" });
+    expect(fetcher).toHaveBeenCalledTimes(1); expect((await repository.getJob("job"))?.batchCursor).toBe(0);
+  });
+  it("enforces the shared visual extraction/verification ceiling before dispatch", async () => {
+    stage("verifying_quests"); await seedVisual(40); const fetcher = vi.fn(); vi.stubGlobal("fetch",fetcher);
+    expect(await (await call()).json()).toMatchObject({ outcome: "interrupted" });
+    expect(fetcher).not.toHaveBeenCalled(); expect(db.database.prepare("SELECT id FROM book_provider_calls").all()).toHaveLength(0);
   });
 });

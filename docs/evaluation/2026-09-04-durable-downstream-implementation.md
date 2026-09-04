@@ -23,6 +23,8 @@ Visual verification retains its existing dollar/token/call ceilings, now admitte
 
 ## Local migration and boundaries
 
+Follow-up verification: the actual localhost D1/R2 synthetic storage smoke passed on job `storage-smoke-328e3530-536f-4461-8fad-38a18df7211f`. It published two immutable book-map references, retrieved a valid ready game, made zero provider calls, and removed that synthetic job's temporary artifacts on acknowledgment. This is storage/lifecycle acceptance, not book adaptation acceptance. Three additional real-route visual tests found and fixed a budget-validation bug: fractional price metadata was being checked as though it were an integer counter. The checks now validate the eight integer counter fields explicitly; paired-image final-request replay, changed-image rejection and the combined 40-call ceiling pass.
+
 Applied `0002_left_caretaker.sql` and `0003_concerned_lockheed.sql` to local Miniflare D1 only. The initial local schema had been applied directly and has no Wrangler migration journal; therefore the new additive files were applied directly after inspecting existing tables. Both files were also tested through the complete migration chain on a fresh SQLite database. No remote migration, push or deployment occurred.
 
 This does not claim vendor-side exactly-once processing after network failure. Unknown external outcomes cannot be proven free. The bounded explicit retry can incur another charge. Deterministically invalid saved outputs are not silently discarded or automatically billed again; they stop for manual recovery. Full-book OCR, source fidelity, final game quality and production-worker acceptance remain separate, unfinished gates.

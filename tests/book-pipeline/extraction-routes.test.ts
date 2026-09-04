@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { deflateSync } from "node:zlib";
 import { createExtractionApi, lunaLimits } from "../../app/lib/book-pipeline/extraction/http";
-import { EXTRACTION_STATE_PATH, type ExtractionState } from "../../app/lib/book-pipeline/extraction/stage";
+import { EXTRACTION_STATE_PATH, initialExtractionState } from "../../app/lib/book-pipeline/extraction/stage";
 import { extractionRenderRequests } from "../../app/lib/book-pipeline/extraction/policy";
 import { hashPrivateValue } from "../../app/lib/book-pipeline/security";
 import type { BookJobRecord } from "../../app/lib/book-pipeline/job-repository";
@@ -36,12 +36,20 @@ const image = () => ({ id: "ocr-p0-r0-0", sourceFingerprint: "source", imageUrl:
 const packet = () => ({ sourceFingerprint: "source", pageIndex: 0, revision: 0, nativeText: "", orderReliable: false, images: [image()] });
 
 describe("authenticated extraction handoff", () => {
+  it("leaves existing v2 manifests byte-for-byte unchanged when resuming", async () => {
+    const f = await fixture();
+    const legacy = initialExtractionState("source", 109, lunaLimits({}, "BOOK_EXTRACTION"), 2);
+    f.values.set(EXTRACTION_STATE_PATH, legacy);
+    const before = JSON.stringify(legacy);
+    expect((await f.call("POST", f.manifest)).status).toBe(200);
+    expect(JSON.stringify(f.values.get(EXTRACTION_STATE_PATH))).toBe(before);
+  });
   it("pins the manifest and rejects changed page count, fingerprint, and limits", async () => {
     const f = await fixture();
     expect((await f.call("POST", f.manifest)).status).toBe(200);
     expect((await f.call("POST", f.manifest)).status).toBe(200);
     expect(f.repository.claimStage).toHaveBeenCalledOnce();
-    expect((f.values.get(EXTRACTION_STATE_PATH) as ExtractionState).model).toBe("gpt-5.6-luna");
+    expect(f.values.get(EXTRACTION_STATE_PATH)).toMatchObject({ version: 3, model: "gpt-5.6-sol" });
     expect((await f.call("POST", { ...f.manifest, pageCount: 110 })).status).toBe(409);
     expect((await f.call("POST", { ...f.manifest, pageCount: 201 })).status).toBe(400);
     expect((await f.call("POST", { ...f.manifest, sourceFingerprint: "other" })).status).toBe(400);

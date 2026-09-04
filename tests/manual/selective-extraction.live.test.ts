@@ -29,7 +29,7 @@ it.skipIf(process.env.RUN_SELECTIVE_EXTRACTION_TEST !== "1")("extracts the faile
   };
   const now = Math.floor(Date.now() / 1000);
   const job = { id: "selective-page-six-test", identityHash: "private-selective-page-test", originalFilename: "source.pdf", expiresAt: now + 3600 };
-  const state = initialExtractionState("page-six-diagnostic-only", 6, { maxMicros: 500000, inputUsdPerMillion: 0.2, outputUsdPerMillion: 1.2 });
+  const state = initialExtractionState("page-six-diagnostic-only", 6, { maxMicros: 500000, inputUsdPerMillion: 0.2, outputUsdPerMillion: 1.2 }, 2);
   state.cursor = 5; state.revision = 2; state.completed = Array.from({ length: 5 }, (_, i) => `not-evaluated/${i}`);
   await store.putJsonIfAbsent(job.id, EXTRACTION_STATE_PATH, state, job.expiresAt);
   const asset: ExtractionAsset = JSON.parse(await readFile("outputs/full-book-local/c7f9488e-16d6-4386-b859-6b209b9b56c1/extraction/assets/5-2.json", "utf8"));

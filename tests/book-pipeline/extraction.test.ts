@@ -3,6 +3,7 @@ import { canonicalizeExtractedPages, EXTRACTION_PROMPT_VERSION, PAGE_EXTRACTION_
 import { advanceExtraction, EXTRACTION_STATE_PATH, initialExtractionState, type ExtractionAsset, type ExtractionState } from "../../app/lib/book-pipeline/extraction/stage";
 import type { VisualStore } from "../../app/lib/book-pipeline/visual-agent/stage";
 import type { StructuredOutputProvider } from "../../app/lib/book-pipeline/providers/openai";
+import { AUXILIARY_EXTRACTION_PROMPT_VERSION, AUXILIARY_EXTRACTION_INSTRUCTIONS, CONTINUATION_EXTRACTION_PROMPT_VERSION, CONTINUATION_EXTRACTION_INSTRUCTIONS, parseAuxiliaryExtractedPage } from "../../app/lib/book-pipeline/extraction/page-extraction";
 
 const page = (pageIndex = 0, quality = "readable") => ({ pageIndex, quality, printedLabel: "113", blocks: [{ type: "paragraph", text: "Record evidence before choosing an explanation.", box: null }], visuals: [], warnings: [] });
 const response = (data: unknown) => ({ responseId: "response", data, usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 } });
@@ -18,10 +19,10 @@ function memoryStore() {
   };
   return store;
 }
-async function fixture() {
+async function fixture(version: 2 | 3 = 2) {
   const store = memoryStore(); const job = { id: "job", identityHash: "identity", originalFilename: "book.pdf", expiresAt: 10000 };
-  await store.putJson(job.id, EXTRACTION_STATE_PATH, initialExtractionState("fingerprint", 1, limits), job.expiresAt);
-  const generate = vi.fn(async () => response(page()));
+  await store.putJson(job.id, EXTRACTION_STATE_PATH, initialExtractionState("fingerprint", 1, limits, version), job.expiresAt);
+  const generate = vi.fn(async () => response(version === 3 ? { ...page(), omittedAuxiliary: [] } : page()));
   const input = { job, store, provider: { generateStructured: generate } as unknown as StructuredOutputProvider, now: 1000, isActive: async () => true };
   async function asset(revision = 0, nativeText = "", orderReliable = false) {
     const value: ExtractionAsset = { pageIndex: 0, revision, nativeText, orderReliable,
@@ -35,6 +36,54 @@ async function fixture() {
 }
 
 describe("provider-neutral page extraction", () => {
+  it("defaults new jobs to pinned Sol prices without changing Luna visual policy or legacy manifests", () => {
+    expect(initialExtractionState("fingerprint", 1, limits)).toMatchObject({ version: 3, model: "gpt-5.6-sol", promptVersion: CONTINUATION_EXTRACTION_PROMPT_VERSION, price: { inputUsdPerMillion: 4, outputUsdPerMillion: 20 } });
+  });
+  it("accepts minor omissions in one call and excludes them from canonical evidence", async () => {
+    const f = await fixture(3); await f.asset();
+    const omittedAuxiliary = [{ category: "nonessential_credit", reason: "uncertain_reading", box: null }];
+    f.generate.mockResolvedValueOnce(response({ ...page(), omittedAuxiliary }));
+    expect(await advanceExtraction(f.input)).toMatchObject({ completedPages: 1 });
+    expect(await advanceExtraction(f.input)).toEqual({ outcome: "complete" });
+    expect(f.generate).toHaveBeenCalledOnce();
+    expect(f.generate).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-5.6-sol", reasoningEffort: "none", instructions: CONTINUATION_EXTRACTION_INSTRUCTIONS }));
+    expect((await f.state())?.usage.estimatedMicros).toBe(1500);
+    expect(await f.store.getJson(f.job.id, "extraction/pages/0-0-0.json")).toMatchObject({ omittedAuxiliary });
+    const canonical = await f.store.getJson<{ blocks: Array<{ text: string }>; warnings: string[] }>(f.job.id, "canonical-book.json");
+    expect(canonical!.blocks.map((b) => b.text)).toEqual([page().blocks[0].text]);
+    expect(canonical!.warnings.join(" ")).toContain("auxiliary-omitted:nonessential_credit");
+  });
+  it("does not use omission metadata to bypass unresolved core content", async () => {
+    const f = await fixture(3);
+    f.generate.mockImplementation(async () => response({ ...page(0, "needs_refinement"), omittedAuxiliary: [{ category: "nonessential_credit", reason: "illegible", box: null }] }));
+    for (const revision of [0, 1, 2]) { await f.asset(revision); await advanceExtraction(f.input); }
+    expect((await f.state())?.failure).toBe("extraction_quality_insufficient");
+    expect(await f.store.getJson(f.job.id, "canonical-book.json")).toBeNull();
+  });
+  it("rejects guessed transcription fields, core omission categories and invalid omission geometry", () => {
+    const omission = { category: "nonessential_credit", reason: "illegible", box: null };
+    const parse = (item: unknown) => parseAuxiliaryExtractedPage({ ...page(), omittedAuxiliary: [item] }, 0);
+    expect(() => parse({ ...omission, text: "Invented designer name" })).toThrow();
+    expect(() => parse({ ...omission, category: "meaningful_caption" })).toThrow();
+    expect(() => parse({ ...omission, box: { x: 0.9, y: 0, width: 0.5, height: 1 } })).toThrow(/outside/);
+    expect(() => parseAuxiliaryExtractedPage({ ...page(0, "blank"), blocks: [], omittedAuxiliary: [omission] }, 0)).toThrow(/Blank/);
+    expect(() => parseAuxiliaryExtractedPage(page(), 0)).toThrow();
+  });
+  it("replays the v3 result without paying again after a cursor-write interruption", async () => {
+    const f = await fixture(3); await f.asset();
+    const original = f.store.putJsonVersion;
+    f.store.putJsonVersion = vi.fn().mockRejectedValueOnce(new Error("storage interrupted")).mockImplementation(original);
+    await expect(advanceExtraction(f.input)).rejects.toThrow(/storage/);
+    expect(await advanceExtraction(f.input)).toMatchObject({ completedPages: 1 });
+    expect(f.generate).toHaveBeenCalledOnce();
+  });
+  it("preserves the initial v3 prompt when replaying its pinned manifest", async () => {
+    const f = await fixture(3); const state = (await f.state())!;
+    state.promptVersion = AUXILIARY_EXTRACTION_PROMPT_VERSION;
+    await f.store.putJson(f.job.id, EXTRACTION_STATE_PATH, state, f.job.expiresAt); await f.asset();
+    await advanceExtraction(f.input);
+    expect(f.generate).toHaveBeenCalledWith(expect.objectContaining({ instructions: AUXILIARY_EXTRACTION_INSTRUCTIONS }));
+  });
   it("uses Sol only at final refinement and records model-specific spend and provenance", async () => {
     const f = await fixture();
     f.generate.mockResolvedValueOnce(response(page(0, "needs_refinement"))).mockResolvedValueOnce(response(page(0, "needs_refinement")));

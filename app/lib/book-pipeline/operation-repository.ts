@@ -69,7 +69,10 @@ export class BookOperationRepository {
   async claimCall(run: StageOwner, input: { slot: number; requestHash: string; reserveUnits: number; ceiling: number; retryConfirmed?: boolean; visual?: VisualCallBudget }): Promise<ProviderCall | null> {
     if (!Number.isSafeInteger(input.slot) || input.slot < 0 || input.slot > 8 || !HASH.test(input.requestHash) ||
       ![input.reserveUnits,input.ceiling].every((n) => Number.isSafeInteger(n) && n > 0)) throw new Error("Invalid call admission");
-    if (input.visual && Object.values(input.visual).some((n) => !Number.isSafeInteger(n) || n < 0)) throw new Error("Invalid visual admission");
+    // The provider can attach decimal pricing metadata alongside the admission
+    // counters. Validate the actual counter fields, not every extra property.
+    const visualCounters = ["micros","input","output","priorMicros","priorInput","priorOutput","priorCalls","maxMicros"] as const;
+    if (input.visual && visualCounters.some((key) => !Number.isSafeInteger(input.visual![key]) || input.visual![key] < 0)) throw new Error("Invalid visual admission");
     const v = input.visual;
     const visual = v ? { micros: v.micros, input: v.input, output: v.output, calls: 1 } : {};
     const prior = await this.latestCall(run,input.slot); const now = this.clock();
