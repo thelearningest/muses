@@ -44,7 +44,7 @@ export async function createVisualPageRenderer(file: File) {
       }
       const images = [];
       if (!nativeTextUsable(nativeText, orderReliable)) {
-        for (const part of requests) images.push(await renderer.render(part, sourceFingerprint, request.compact ? { edge: 2048, bytes: 384 * 1024 } : undefined));
+        for (const part of requests) images.push(await renderer.render(part, sourceFingerprint, request.compact ? { edge: 1400, bytes: 192 * 1024 } : undefined));
       }
       return { sourceFingerprint, pageIndex: request.pageIndex, revision: request.revision, nativeText, orderReliable, images };
     },

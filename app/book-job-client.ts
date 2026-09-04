@@ -231,7 +231,7 @@ export async function driveBookJob(input: {
           const key = (request: ExtractionPageRequest) => `${request.pageIndex}:${request.revision}`;
           const remaining = requests.filter((request) => !prepared.has(key(request)));
           // Keep enough uploads in flight to hide hosted R2/database latency.
-          // Each compact page is bounded to 384 KiB; eight remain modest for a browser.
+          // Each compact page is bounded to 192 KiB; eight remain modest for a browser.
           if (remaining.length) preparation = mapConcurrent(remaining, 8, async (request) => {
             if (input.signal.aborted) return;
             await input.prepareExtractionPage!(request, advanced.sourceFingerprint!);

@@ -70,6 +70,7 @@ export type BookPipelineRuntimeEnv = {
   DB: D1DatabaseBinding;
   BOOK_JOBS: R2BucketBinding;
   OPENAI_API_KEY?: string;
+  OPENAI_SERVICE_TIER?: string;
   MISTRAL_API_KEY?: string;
   TURNSTILE_SECRET_KEY?: string;
   BOOK_CAPABILITY_HMAC_KEY?: string;

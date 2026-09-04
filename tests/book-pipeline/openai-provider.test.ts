@@ -17,6 +17,13 @@ describe("paid provider failure boundaries", () => {
     expect(await new OpenAiResponsesProvider("test", fetcher).generateStructured(request)).toMatchObject({ data: { ok: true }, usage: { totalTokens: 12 } });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+  it("sends the explicitly configured fast service tier", async () => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body)).service_tier).toBe("fast");
+      return Response.json(valid);
+    });
+    await new OpenAiResponsesProvider("test", fetcher, "fast").generateStructured(request);
+  });
   it("retains the reservation when a stream ends without a completed response", async () => {
     const fetcher = vi.fn(async () => new Response('data: {"type":"response.output_text.delta","delta":"partial"}\n\n', { headers: { "content-type": "text/event-stream" } }));
     await expect(new OpenAiResponsesProvider("test", fetcher).generateStructured(request)).rejects.toBeInstanceOf(OpenAiIndeterminateRequestError);

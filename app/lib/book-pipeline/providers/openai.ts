@@ -132,6 +132,7 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
   constructor(
     private readonly apiKey: string,
     private readonly fetcher: Fetcher = fetch,
+    private readonly serviceTier?: "fast",
   ) {}
 
   async generateStructured<T>(input: {
@@ -150,6 +151,7 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
       model: input.model,
       store: false,
       stream: true,
+      ...(this.serviceTier ? { service_tier: this.serviceTier } : {}),
       reasoning: { effort: input.reasoningEffort },
       instructions: input.instructions,
       input: input.images?.length ? [{ role: "user", content: [

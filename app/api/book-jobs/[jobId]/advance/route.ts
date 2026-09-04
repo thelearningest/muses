@@ -87,6 +87,11 @@ export async function POST(request: Request, context: Context) {
       Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
     );
     const config = parseBookPipelineConfig(stringEnv);
+    const openAi = () => new OpenAiResponsesProvider(
+      required(env.OPENAI_API_KEY, "OPENAI_API_KEY"),
+      fetch,
+      env.OPENAI_SERVICE_TIER === "fast" ? "fast" : undefined,
+    );
     const operations = new BookOperationRepository(env.DB);
     let store = new BookArtifactStore(env.BOOK_JOBS,operations);
     const ingestion = await store.getJson<{ provider: string; parallelQuests?: boolean; batchedExtraction?: boolean }>(job.id, "ingestion.json");
@@ -118,7 +123,7 @@ export async function POST(request: Request, context: Context) {
         if (!state) throw new Error("Extraction manifest missing");
         try {
           const result = await advanceBatchExtraction({ job, state, store, isActive: isStageActive,
-            provider: durable!.journal.structured(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY"))) });
+            provider: durable!.journal.structured(openAi()) });
           if (result.outcome === "complete" && !await durable!.repository.commitStage({ jobId: job.id, expectedStatus: "extracting_pages", nextStatus: "annotating_visuals", batchCursor: 0, now })) return Response.json({ outcome: "inactive" });
           return Response.json(result, { headers: { "cache-control": "no-store" } });
         } catch {
@@ -128,7 +133,7 @@ export async function POST(request: Request, context: Context) {
       }
       const extractionJob = job;
       const result = await advanceExtraction({ job, store,
-        provider: new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")), now, retryConfirmed,
+        provider: openAi(), now, retryConfirmed,
         isActive: async () => {
           const latest = await repository.getAuthorizedJob(extractionJob.id, capabilityHash);
           return !!latest && latest.status === "extracting_pages" && !latest.cancellationRequested && latest.expiresAt > Date.now() / 1000;
@@ -154,7 +159,7 @@ export async function POST(request: Request, context: Context) {
           expiresAt: job.expiresAt,
         },
         canonical,
-        provider: durable!.journal.structured(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY"))),
+        provider: durable!.journal.structured(openAi()),
         repository: durable!.repository,
         store,
         config: {
@@ -187,7 +192,7 @@ export async function POST(request: Request, context: Context) {
       if (ingestion?.provider === "luna" || env.BOOK_VISUAL_PROVIDER === "luna") {
         const bookMap = await store.getJson<BookMap>(job.id, "book-map.json");
         const result = await runVisualStage({ job, book: canonical, cards: await loadEvidence(store, job.id), store, repository,
-          provider: new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY")), maxPages: config.maxVisualPages,
+          provider: openAi(), maxPages: config.maxVisualPages,
           config: { model: "gpt-5.6-luna", maxCandidates: ingestion?.batchedExtraction ? 3 : 12, plannedQuests: Math.min(9, bookMap?.proposedQuestConceptIds.length ?? 9),
             ...lunaLimits(env, "BOOK_VISUAL") },
           maxCostUnits: config.maxProviderCostUnitsPerJob, now, retryConfirmed });
@@ -245,7 +250,7 @@ export async function POST(request: Request, context: Context) {
         contracts: evidence.contracts,
         images: parallelQuests ? undefined : await questVisualImages(store, job.id, evidence.contracts),
         questImages: parallelQuests ? await Promise.all(evidence.contracts.map((contract) => questVisualImages(store, job.id, [contract]))) : undefined,
-        provider: durable!.journal.structured(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY"))),
+        provider: durable!.journal.structured(openAi()),
         repository: durable!.repository,
         store,
         config: {
@@ -270,7 +275,7 @@ export async function POST(request: Request, context: Context) {
         isActive: isStageActive,
         game: draft.game,
         contracts: evidence.contracts,
-        provider: new VisualQuestProvider(durable!.journal.structured(new OpenAiResponsesProvider(required(env.OPENAI_API_KEY, "OPENAI_API_KEY"))), store, job,
+        provider: new VisualQuestProvider(durable!.journal.structured(openAi()), store, job,
           { model: "gpt-5.6-luna", plannedQuests: 0, ...lunaLimits(env, "BOOK_VISUAL") }, true),
         repository: durable!.repository,
         store,
