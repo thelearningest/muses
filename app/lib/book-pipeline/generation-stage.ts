@@ -75,6 +75,7 @@ export async function generateGameStage(input: {
   isActive?: () => Promise<boolean>;
 }) {
   let reserved = false;
+  let providerCompleted = false;
   try {
     if (input.isActive && !await input.isActive()) return { outcome: "inactive" as const };
     if (input.config.reserveCostUnits && input.config.maxCostUnits && input.repository.reserveProviderCost &&
@@ -93,6 +94,7 @@ export async function generateGameStage(input: {
       safetyIdentifier: input.job.identityHash,
       images: input.images,
     });
+    providerCompleted = true;
     if (input.config.reserveCostUnits && input.repository.reconcileProviderCost) {
       await input.repository.reconcileProviderCost(input.job.id, input.config.reserveCostUnits, Math.max(1, Math.ceil(response.usage.totalTokens / 1_000)), input.now);
       reserved = false;
@@ -110,7 +112,7 @@ export async function generateGameStage(input: {
     if (await input.repository.commitStage({ jobId: input.job.id, expectedStatus: "generating_game", nextStatus: "verifying_quests", now: input.now, batchCursor: 0 }) === false) return { outcome: "inactive" as const };
     return { outcome: "complete" as const, questCount: game.quests.length };
   } catch (error) {
-    const manual = error instanceof OpenAiIndeterminateRequestError;
+    const manual = error instanceof OpenAiIndeterminateRequestError || (providerCompleted && reserved);
     if (reserved && !manual && input.config.reserveCostUnits && input.repository.reconcileProviderCost) {
       await input.repository.reconcileProviderCost(input.job.id, input.config.reserveCostUnits, 0, input.now);
     }

@@ -26,6 +26,13 @@ function map(): BookMap {
 }
 
 describe("evidence-driven generation", () => {
+  it("retains the paid reservation when usage persistence fails", async () => {
+    const repository = { commitStage: vi.fn(), markRecoverable: vi.fn(), appendOpenAiRequestId: vi.fn(), reserveProviderCost: vi.fn().mockResolvedValue(true), reconcileProviderCost: vi.fn().mockRejectedValueOnce(new Error("Database unavailable")) };
+    const provider = { generateStructured: vi.fn(async () => ({ responseId: "resp", data: {}, usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 } })) } as unknown as StructuredOutputProvider;
+    await generateGameStage({ job: { id: "job", identityHash: "identity", originalFilename: "source.pdf", expiresAt: 99 }, bookMap: map(), contracts: contracts(), provider, repository, store: { putJson: vi.fn() }, config: { model: "gpt-5.6-sol", reasoningEffort: "high", reserveCostUnits: 100, maxCostUnits: 1000 }, now: 1 });
+    expect(repository.reconcileProviderCost.mock.calls).toEqual([["job", 100, 1, 1]]);
+    expect(repository.markRecoverable).toHaveBeenCalledWith("job", "generating_game", "manual_retry_required", "manual_retry_required", 1);
+  });
   it("accounts for a paid response but does not publish after cancellation", async () => {
     let active = true;
     const provider = { generateStructured: vi.fn(async () => { active = false; return { responseId: "resp", data: {}, usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 } }; }) } as unknown as StructuredOutputProvider;

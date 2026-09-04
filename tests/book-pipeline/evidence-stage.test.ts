@@ -44,6 +44,13 @@ const card: EvidenceCard = {
 };
 
 describe("OpenAI evidence mapping", () => {
+  it("retains the paid reservation when usage persistence fails", async () => {
+    const repository = { commitStage: vi.fn(), markRecoverable: vi.fn(), appendOpenAiRequestId: vi.fn(), reserveProviderCost: vi.fn().mockResolvedValue(true), reconcileProviderCost: vi.fn().mockRejectedValueOnce(new Error("Database unavailable")) };
+    const provider = { generateStructured: vi.fn(async () => ({ responseId: "resp", data: { cards: [card] }, usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 } })) } as unknown as StructuredOutputProvider;
+    await mapEvidenceBatch({ job: { id: "job", status: "mapping_evidence", batchCursor: 0, identityHash: "identity", expiresAt: 99 }, canonical, provider, repository, store: { getJson: async () => null, putJson: vi.fn() }, config: { model: "gpt-5.4-mini", reasoningEffort: "low", sectionsPerBatch: 3, reserveCostUnits: 100, maxCostUnits: 1000 }, now: 1 });
+    expect(repository.reconcileProviderCost.mock.calls).toEqual([["job", 100, 1, 1]]);
+    expect(repository.markRecoverable).toHaveBeenCalledWith("job", "mapping_evidence", "manual_retry_required", "manual_retry_required", 1, "mapping_evidence", 0);
+  });
   it("uses strict structured output, store false, tracing, and a hashed safety id", async () => {
     const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
       expect(_url).toContain("/responses");

@@ -6,6 +6,8 @@ Update: the approved extraction core, authenticated routes and browser preparati
 
 The source-fidelity audit also reproduced and fixed four evidence-validation gaps: wrong block/page association, fabricated excerpts, invalid numeric/empty anchors, and cross-section citation borrowing. Model input now includes each block's own page index. The older mocked integration fixture was corrected to use its actual canonical excerpt and section rather than an invented quotation.
 
+Provider failure accounting is also hardened: unusable/uncertain results retain reservations, embeddings have a timeout and validated output, and post-response persistence failures no longer release potentially consumed reservations. See `2026-09-04-provider-failure-accounting.md` (220 passing unit tests). This does not replace the outstanding durable-call journal or source-accuracy work.
+
 ## Goal
 
 An efficient, effective agentic pipeline that accepts a book PDF in the website and produces a source-aligned, visually appealing, pedagogically useful, RPG-like game that can run in production. Do not substitute a manually prepared sample or a passing verifier for this result.

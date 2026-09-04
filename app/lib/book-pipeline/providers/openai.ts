@@ -33,7 +33,38 @@ export class OpenAiIndeterminateRequestError extends Error {
   }
 }
 
+// A received but unusable result can still be billable. It intentionally shares
+// the existing explicit-retry/reservation-retention path with unknown outcomes;
+// it is not evidence of a free call. Never put provider/source content in errors.
+export class OpenAiUnusableResultError extends OpenAiIndeterminateRequestError {
+  constructor() {
+    super();
+    this.name = "OpenAiUnusableResultError";
+    this.message = "The OpenAI result is unusable and the request may have been charged";
+  }
+}
+
 type Fetcher = (input: string, init?: RequestInit) => Promise<Response>;
+
+async function paidRequest(fetcher: Fetcher, url: string, apiKey: string, payload: unknown): Promise<Response> {
+  // Serialization errors happen before transmission and must not consume a
+  // reservation. Once fetch starts, an exception cannot prove non-processing.
+  const body = JSON.stringify(payload);
+  let response: Response;
+  try {
+    response = await fetcher(url, { method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, signal: AbortSignal.timeout(90_000), body });
+  } catch { throw new OpenAiIndeterminateRequestError(); }
+  if (response.status === 408 || response.status >= 500) throw new OpenAiIndeterminateRequestError();
+  if (!response.ok) throw new Error(`OpenAI request rejected with status ${response.status}`);
+  return response;
+}
+
+async function responseObject(response: Response): Promise<Record<string, unknown>> {
+  let value: unknown;
+  try { value = await response.json(); } catch { throw new OpenAiIndeterminateRequestError(); }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new OpenAiUnusableResultError();
+  return value as Record<string, unknown>;
+}
 
 function outputText(response: Record<string, unknown>): string | null {
   if (typeof response.output_text === "string") return response.output_text;
@@ -74,56 +105,44 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
     maxOutputTokens?: number;
   }): Promise<StructuredResponse<T>> {
     if (input.maxOutputTokens !== undefined && (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens < 1 || input.maxOutputTokens > 16000)) throw new TypeError("Invalid output limit");
-    let response: Response;
-    try {
-      response = await this.fetcher(RESPONSES_URL, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.apiKey}`,
-          "content-type": "application/json",
+    const response = await paidRequest(this.fetcher, RESPONSES_URL, this.apiKey, {
+      model: input.model,
+      store: false,
+      reasoning: { effort: input.reasoningEffort },
+      instructions: input.instructions,
+      input: input.images?.length ? [{ role: "user", content: [
+        { type: "input_text", text: input.input },
+        ...input.images.flatMap((image) => [
+          { type: "input_text", text: image.label },
+          { type: "input_image", image_url: image.imageUrl, detail: image.detail },
+        ]),
+      ] }] : input.input,
+      ...(input.maxOutputTokens ? { max_output_tokens: input.maxOutputTokens } : {}),
+      safety_identifier: input.safetyIdentifier.slice(0, 64),
+      text: {
+        format: {
+          type: "json_schema",
+          name: input.schemaName,
+          strict: true,
+          schema: input.schema,
         },
-        signal: AbortSignal.timeout(90_000),
-        body: JSON.stringify({
-          model: input.model,
-          store: false,
-          reasoning: { effort: input.reasoningEffort },
-          instructions: input.instructions,
-          input: input.images?.length ? [{ role: "user", content: [
-            { type: "input_text", text: input.input },
-            ...input.images.flatMap((image) => [
-              { type: "input_text", text: image.label },
-              { type: "input_image", image_url: image.imageUrl, detail: image.detail },
-            ]),
-          ] }] : input.input,
-          ...(input.maxOutputTokens ? { max_output_tokens: input.maxOutputTokens } : {}),
-          safety_identifier: input.safetyIdentifier.slice(0, 64),
-          text: {
-            format: {
-              type: "json_schema",
-              name: input.schemaName,
-              strict: true,
-              schema: input.schema,
-            },
-          },
-        }),
-      });
-    } catch (error) {
-      if (error instanceof TypeError || (error instanceof Error && ["AbortError", "TimeoutError"].includes(error.name))) throw new OpenAiIndeterminateRequestError();
-      throw error;
-    }
-    if (!response.ok) throw new Error(`OpenAI request failed with status ${response.status}`);
-    let value: Record<string, unknown>;
-    try { value = (await response.json()) as Record<string, unknown>; }
-    catch { throw new OpenAiIndeterminateRequestError(); }
-    if (value.status !== "completed") throw new Error("OpenAI response was incomplete");
+      },
+    });
+    const value = await responseObject(response);
+    if (value.status !== "completed" || typeof value.id !== "string" || !value.id) throw new OpenAiUnusableResultError();
     const text = outputText(value);
-    if (!text) throw new Error("OpenAI response contained no structured output");
+    if (!text) throw new OpenAiUnusableResultError();
+    let data: T;
+    try { data = JSON.parse(text) as T; } catch { throw new OpenAiUnusableResultError(); }
     const usage = (value.usage ?? {}) as Record<string, unknown>;
     const details = (usage.input_tokens_details ?? {}) as Record<string, unknown>;
+    const counts = [usage.input_tokens, usage.output_tokens, usage.total_tokens];
+    if (counts.some((n) => typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) ||
+      Number(usage.input_tokens) <= 0 || usage.total_tokens !== Number(usage.input_tokens) + Number(usage.output_tokens)) throw new OpenAiUnusableResultError();
     return {
-      responseId: String(value.id ?? ""),
+      responseId: value.id,
       requestId: response.headers.get("x-request-id") ?? undefined,
-      data: JSON.parse(text) as T,
+      data,
       usage: {
         inputTokens: Number(usage.input_tokens ?? 0),
         outputTokens: Number(usage.output_tokens ?? 0),
@@ -142,14 +161,15 @@ export class OpenAiEmbeddingsProvider {
   ) {}
 
   async embed(input: { model: string; values: string[] }): Promise<{ vectors: number[][]; requestId?: string }> {
-    const response = await this.fetcher(EMBEDDINGS_URL, {
-      method: "POST",
-      headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: input.model, input: input.values, encoding_format: "float" }),
-    });
-    if (!response.ok) throw new Error(`OpenAI embedding request failed with status ${response.status}`);
-    const body = await response.json() as { data?: Array<{ index: number; embedding: number[] }> };
-    const vectors = [...(body.data ?? [])].sort((a, b) => a.index - b.index).map((item) => item.embedding);
+    if (!input.values.length) throw new TypeError("Embedding input is empty");
+    const response = await paidRequest(this.fetcher, EMBEDDINGS_URL, this.apiKey, { model: input.model, input: input.values, encoding_format: "float" });
+    const body = await responseObject(response);
+    if (!Array.isArray(body.data) || body.data.length !== input.values.length) throw new OpenAiUnusableResultError();
+    const entries = body.data as Array<{ index: number; embedding: number[] }>;
+    if (entries.some((item) => !item || !Number.isSafeInteger(item.index) || !Array.isArray(item.embedding) || !item.embedding.length || item.embedding.some((n) => typeof n !== "number" || !Number.isFinite(n)))) throw new OpenAiUnusableResultError();
+    const sorted = [...entries].sort((a, b) => a.index - b.index);
+    if (sorted.some((item, index) => item.index !== index || item.embedding.length !== sorted[0].embedding.length)) throw new OpenAiUnusableResultError();
+    const vectors = sorted.map((item) => item.embedding);
     return { vectors, requestId: response.headers.get("x-request-id") ?? undefined };
   }
 }

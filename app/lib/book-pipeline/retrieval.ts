@@ -7,6 +7,7 @@ import type {
   QuestEvidenceMissingField,
 } from "./contracts";
 import type { BookJobRepository } from "./job-repository";
+import { OpenAiIndeterminateRequestError, OpenAiUnusableResultError } from "./providers/openai";
 
 export interface EmbeddingProvider {
   embed(input: { model: string; values: string[] }): Promise<{ vectors: number[][]; requestId?: string }>;
@@ -148,6 +149,7 @@ export async function retrieveQuestEvidenceStage(input: {
   now: number;
 }) {
   let reserved = false;
+  let providerCompleted = false;
   try {
     const manifest = await input.store.getJson<{ batchCount: number }>(input.job.id, "evidence-manifest.json");
     if (!manifest || !Number.isSafeInteger(manifest.batchCount) || manifest.batchCount < 1) throw new Error("Evidence manifest is missing");
@@ -164,7 +166,14 @@ export async function retrieveQuestEvidenceStage(input: {
       if (!reserved) throw new Error("Provider budget exhausted");
     }
     const embedded = await input.provider.embed({ model: input.model, values });
-    if (embedded.vectors.length !== values.length) throw new Error("Embedding count mismatch");
+    providerCompleted = true;
+    if (embedded.vectors.length !== values.length) throw new OpenAiUnusableResultError();
+    // The embedding call has completed and may be charged even if grounding,
+    // persistence or the stage transition below subsequently fails.
+    if (reserved && input.reserveCostUnits && input.repository.reconcileProviderCost) {
+      await input.repository.reconcileProviderCost(input.job.id, input.reserveCostUnits, input.reserveCostUnits, input.now);
+      reserved = false;
+    }
     if (embedded.requestId) await input.repository.appendOpenAiRequestId(input.job.id, embedded.requestId, input.now);
     const unitVectors = units.map((unit, index) => ({ id: unit.id, vector: embedded.vectors[index] }));
     const contracts = concepts.map((concept, index) => {
@@ -185,16 +194,13 @@ export async function retrieveQuestEvidenceStage(input: {
     }, input.job.expiresAt);
     await input.store.putJson(input.job.id, "quest-evidence.json", { contracts }, input.job.expiresAt);
     await input.repository.commitStage({ jobId: input.job.id, expectedStatus: "retrieving_quest_evidence", nextStatus: "generating_game", now: input.now });
-    if (reserved && input.reserveCostUnits && input.repository.reconcileProviderCost) {
-      await input.repository.reconcileProviderCost(input.job.id, input.reserveCostUnits, input.reserveCostUnits, input.now);
-      reserved = false;
-    }
     return { outcome: "complete" as const, contractCount: contracts.length };
-  } catch {
-    if (reserved && input.reserveCostUnits && input.repository.reconcileProviderCost) {
+  } catch (error) {
+    const manual = error instanceof OpenAiIndeterminateRequestError || (providerCompleted && reserved);
+    if (reserved && !manual && input.reserveCostUnits && input.repository.reconcileProviderCost) {
       await input.repository.reconcileProviderCost(input.job.id, input.reserveCostUnits, 0, input.now);
     }
-    await input.repository.markRecoverable(input.job.id, "retrieving_quest_evidence", "failed_recoverable", "grounding_quality_insufficient", input.now);
+    await input.repository.markRecoverable(input.job.id, "retrieving_quest_evidence", manual ? "manual_retry_required" : "failed_recoverable", manual ? "manual_retry_required" : "grounding_quality_insufficient", input.now);
     return { outcome: "interrupted" as const };
   }
 }

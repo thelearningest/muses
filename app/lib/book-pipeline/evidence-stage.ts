@@ -116,6 +116,7 @@ export async function mapEvidenceBatch(input: {
   const existing = await input.store.getJson<{ cards: EvidenceCard[] }>(input.job.id, path);
   if (!existing) {
     let reserved = false;
+    let providerCompleted = false;
     const sections = batches[input.job.batchCursor];
     try {
       if (
@@ -154,6 +155,7 @@ export async function mapEvidenceBatch(input: {
         }),
         safetyIdentifier: input.job.identityHash,
       });
+      providerCompleted = true;
       if (input.config.reserveCostUnits && input.repository.reconcileProviderCost) {
         await input.repository.reconcileProviderCost(
           input.job.id,
@@ -181,7 +183,7 @@ export async function mapEvidenceBatch(input: {
         input.now,
       );
     } catch (error) {
-      const manual = error instanceof OpenAiIndeterminateRequestError;
+      const manual = error instanceof OpenAiIndeterminateRequestError || (providerCompleted && reserved);
       if (reserved && !manual && input.config.reserveCostUnits && input.repository.reconcileProviderCost) {
         await input.repository.reconcileProviderCost(input.job.id, input.config.reserveCostUnits, 0, input.now);
       }
