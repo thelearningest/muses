@@ -125,6 +125,16 @@ describe("resumable book job client", () => {
     try { expect((await new BookJobClient().status(job)).stage).toBe("reading_source"); }
     finally { globalThis.fetch = original; }
   });
+  it("stops waiting for a hung advance request before the hosted cutoff", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = new BookJobClient(vi.fn(() => new Promise<Response>(() => undefined)));
+      const pending = client.advance(job);
+      const rejection = expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+      await vi.advanceTimersByTimeAsync(90_000);
+      await rejection;
+    } finally { vi.useRealTimers(); }
+  });
   it.each(["extraction", "visual-assets"])("retries an idempotent %s asset upload after a transient network failure", async (kind) => {
     const fetcher = vi.fn().mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValueOnce(Response.json({ accepted: true }));
     const client = new BookJobClient(fetcher);

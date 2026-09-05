@@ -9,9 +9,10 @@ export type BookJobAdvanceResult = { outcome: string; completedBatches?: number;
 export const RESUMABLE_JOB_KEY = "playable-books-active-job:v1";
 export const BROWSER_IDENTITY_KEY = "playable-books-browser-identity:v1";
 export const OCR_RECHECK_MS = 15_000;
-// Longer than the provider deadline plus persistence overhead. The UI polls the
-// durable status independently, so users still see confirmed batch progress.
-export const ADVANCE_TIMEOUT_MS = 270_000;
+// End the browser wait before the hosted request window can cancel the Worker.
+// The durable stage lease and paid-call journal make the following status
+// recheck safe even when the original response never reaches the browser.
+export const ADVANCE_TIMEOUT_MS = 90_000;
 export const PREPARATION_WAVE_SIZE = 32;
 export const PAGE_PREPARATION_TIMEOUT_MS = 60_000;
 
@@ -40,6 +41,18 @@ async function withTimeout<T>(promise: Promise<T>, milliseconds: number, code: s
     return await Promise.race([
       promise,
       new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new BookJobClientError(code, message, 408)), milliseconds); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function withNetworkDeadline<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new DOMException("The request took too long.", "TimeoutError")), milliseconds); }),
     ]);
   } finally {
     if (timer) clearTimeout(timer);
@@ -131,9 +144,9 @@ export class BookJobClient {
   }
 
   async advance(job: ResumableBookJob, retryConfirmed = false): Promise<BookJobAdvanceResult> {
-    return parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/advance`, {
+    return parseResponse(await withNetworkDeadline(this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/advance`, {
       method: "POST", headers: this.headers(job, true), body: JSON.stringify({ retryConfirmed }), signal: AbortSignal.timeout(ADVANCE_TIMEOUT_MS),
-    }));
+    }), ADVANCE_TIMEOUT_MS));
   }
 
   async uploadVisualAsset(job: ResumableBookJob, asset: unknown): Promise<void> {
