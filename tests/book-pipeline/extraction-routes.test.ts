@@ -52,6 +52,18 @@ describe("authenticated extraction handoff", () => {
     expect((await f.call("PUT", packet())).status).toBe(200);
     expect(f.values.has("extraction/assets/0-0.json")).toBe(true);
   });
+  it("records a skipped page only for batched extraction", async () => {
+    const f = await fixture();
+    f.values.set("ingestion.json", { provider: "luna", batchedExtraction: true });
+    await f.call("POST", f.manifest);
+    const skipped = { sourceFingerprint: "source", pageIndex: 0, revision: 0, nativeText: "", orderReliable: false, images: [], skipped: true };
+    expect((await f.call("PUT", skipped)).status).toBe(200);
+    expect(f.values.get("extraction/assets/0-0.json")).toMatchObject({ pageIndex: 0, skipped: true, images: [] });
+
+    const legacy = await fixture();
+    await legacy.call("POST", legacy.manifest);
+    expect((await legacy.call("PUT", skipped)).status).toBe(400);
+  });
   it("leaves existing v2 manifests byte-for-byte unchanged when resuming", async () => {
     const f = await fixture();
     const legacy = initialExtractionState("source", 109, lunaLimits({}, "BOOK_EXTRACTION"), 2);

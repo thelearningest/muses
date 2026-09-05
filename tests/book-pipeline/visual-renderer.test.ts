@@ -39,7 +39,7 @@ describe("bounded PDF.js rendering", () => {
     vi.stubGlobal("document", { createElement: () => ({ width: 0, height: 0, getContext: () => ({ drawImage: mock.draw }), toDataURL: (type: string) => { encodings.push(type); return `data:${type};base64,AA==`; } }) });
     const renderer = await createVisualPageRenderer(new File(["fixture"], "test.pdf"));
     await renderer.prepareExtraction({ pageIndex: 0, revision: 0, parts: 1, allowNative: true, compact: true }, "source");
-    await renderer.prepareExtraction({ pageIndex: 0, revision: 0, parts: 1, allowNative: true, compact: true }, "source", { fallbackPng: true });
+    await renderer.prepareExtraction({ pageIndex: 0, revision: 0, parts: 1, allowNative: true, compact: true }, "source", { retry: 1 });
     expect(encodings).toEqual(["image/jpeg", "image/png"]);
     await renderer.destroy();
   });

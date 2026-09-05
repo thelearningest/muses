@@ -242,16 +242,27 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
       },
       prepareExtractionPage: async (request, fingerprint) => {
         const renderer = await rendererFor(fingerprint);
-        if (controller.signal.aborted) return;
-        const asset = await renderer.prepareExtraction(request, fingerprint);
-        if (controller.signal.aborted) return;
-        try {
-          await clientRef.current.uploadExtractionAsset(job, asset);
-        } catch (error) {
-          if (!(error instanceof BookJobClientError) || error.code !== "invalid_extraction_asset" || controller.signal.aborted) throw error;
-          const fallback = await renderer.prepareExtraction(request, fingerprint, { fallbackPng: true });
-          if (!controller.signal.aborted) await clientRef.current.uploadExtractionAsset(job, fallback);
+        let lastRejected: BookJobClientError | undefined;
+        for (const retry of [0, 1, 2, 3] as const) {
+          if (controller.signal.aborted) return;
+          const asset = await renderer.prepareExtraction(request, fingerprint, retry ? { retry } : undefined);
+          if (controller.signal.aborted) return;
+          try {
+            await clientRef.current.uploadExtractionAsset(job, asset);
+            return;
+          } catch (error) {
+            if (!(error instanceof BookJobClientError) || ![400, 413].includes(error.status) || controller.signal.aborted) throw error;
+            lastRejected = error;
+          }
         }
+        // Batched extraction can safely abstain from one pathological page.
+        // Recording the skip prevents a single rejected image from stranding
+        // every other page in the book.
+        if (request.compact && !controller.signal.aborted) {
+          await clientRef.current.skipExtractionAsset(job, request, fingerprint);
+          return;
+        }
+        throw lastRejected ?? new Error(`PDF page ${request.pageIndex + 1} could not be prepared.`);
       },
       onPreparationProgress: setPreparationProgress,
       renderAssets: async (requests, fingerprint) => {

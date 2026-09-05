@@ -8,7 +8,7 @@ import { EXTRACTION_STATE_PATH, initialExtractionState, type ExtractionAsset, ty
 import { initialBatchState, type BatchExtractionState } from "./batch";
 
 const manifestSchema = z.object({ sourceFingerprint: z.string().max(200), pageCount: z.number().int().min(1).max(300) }).strict();
-const uploadSchema = z.object({ sourceFingerprint: z.string().max(200), pageIndex: z.number().int().min(0).max(299), revision: z.number().int().min(0).max(2), nativeText: z.string().max(30000), orderReliable: z.boolean(), images: z.array(assetUploadSchema).max(4) }).strict();
+const uploadSchema = z.object({ sourceFingerprint: z.string().max(200), pageIndex: z.number().int().min(0).max(299), revision: z.number().int().min(0).max(2), nativeText: z.string().max(30000), orderReliable: z.boolean(), images: z.array(assetUploadSchema).max(4), skipped: z.boolean().optional() }).strict();
 
 // Pin the actual provider/tier price basis into each new manifest. Fast Sol is
 // currently twice Standard; Luna remains the visual-agent default.
@@ -83,7 +83,9 @@ export function createExtractionApi(deps: {
             : state.cursor !== value.pageIndex || state.revision !== value.revision)) throw new Rejected("unexpected_extraction_asset", 409);
         const expected = extractionRenderRequests(value.pageIndex, value.revision);
         const native = value.revision === 0 && nativeTextUsable(value.nativeText, value.orderReliable);
-        if (value.images.length !== (native ? 0 : expected.length)) throw new Rejected("incomplete_extraction_asset", 400);
+        const skipped = state.version === 4 && value.skipped === true && value.revision === 0 &&
+          value.nativeText === "" && value.orderReliable === false && value.images.length === 0;
+        if (!skipped && value.images.length !== (native ? 0 : expected.length)) throw new Rejected("incomplete_extraction_asset", 400);
         const images: ExtractionAsset["images"] = [];
         for (let i = 0; i < value.images.length; i++) {
           let image: Awaited<ReturnType<typeof validateVisualAsset>>;
@@ -97,7 +99,7 @@ export function createExtractionApi(deps: {
           if (state.version === 4 && (image.imageUrl.length - image.imageUrl.indexOf(",") - 1) * 3 / 4 > 384 * 1024) throw new Rejected("batch_image_too_large", 413);
           images.push({ imageUrl: image.imageUrl, width: image.width, height: image.height, hash: image.hash, detail: "high", label: `${state.version === 4 ? `pageIndex=${value.pageIndex}, ` : ""}PDF page ${value.pageIndex + 1}, full-page region ${JSON.stringify(expected[i].box ?? { x: 0, y: 0, width: 1, height: 1 })}` });
         }
-        const asset: ExtractionAsset = { pageIndex: value.pageIndex, revision: value.revision, nativeText: value.nativeText, orderReliable: value.orderReliable, images };
+        const asset: ExtractionAsset = { pageIndex: value.pageIndex, revision: value.revision, nativeText: value.nativeText, orderReliable: value.orderReliable, ...(skipped ? { skipped: true } : {}), images };
         const latest = await deps.store.getJson<ExtractionState | BatchExtractionState>(jobId, EXTRACTION_STATE_PATH);
         if (!latest || latest.version !== state.version || latest.fingerprint !== state.fingerprint || latest.pageCount !== state.pageCount ||
           (latest.version !== 4 && state.version !== 4 && (latest.cursor !== state.cursor || latest.revision !== state.revision))) throw new Rejected("unexpected_extraction_asset", 409);

@@ -148,6 +148,13 @@ export class BookJobClient {
     await this.uploadJson(job, `/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, asset);
   }
 
+  async skipExtractionAsset(job: ResumableBookJob, request: ExtractionPageRequest, sourceFingerprint: string): Promise<void> {
+    await this.uploadJson(job, `/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, {
+      sourceFingerprint, pageIndex: request.pageIndex, revision: request.revision,
+      nativeText: "", orderReliable: false, images: [], skipped: true,
+    });
+  }
+
   async acknowledge(job: ResumableBookJob): Promise<void> {
     const response = await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/acknowledge`, { method: "POST", headers: this.headers(job, true), body: "{}" });
     if (!response.ok) await parseResponse(response);

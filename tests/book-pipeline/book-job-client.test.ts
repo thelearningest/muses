@@ -134,6 +134,14 @@ describe("resumable book job client", () => {
     expect(String(fetcher.mock.calls[0][0])).toContain(`/api/book-jobs/${job.jobId}/${kind}`);
     expect(fetcher.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
   });
+  it("records a batched page skip through the extraction endpoint", async () => {
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ accepted: true }));
+    await new BookJobClient(fetcher).skipExtractionAsset(job, { pageIndex: 7, revision: 0, parts: 1, allowNative: true, compact: true }, "source");
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      sourceFingerprint: "source", pageIndex: 7, revision: 0, nativeText: "", orderReliable: false, images: [], skipped: true,
+    });
+  });
   it("prepares only the requested extraction manifest and page before resuming", async () => {
     const controller = new AbortController();
     const prepareExtractionManifest = vi.fn(async () => undefined), prepareExtractionPage = vi.fn(async () => undefined);

@@ -20,6 +20,7 @@ export type ExtractionState = {
 export type ExtractionPageRequest = { pageIndex: number; revision: number; parts: number; allowNative: boolean; compact?: boolean };
 export type ExtractionAsset = {
   pageIndex: number; revision: number; nativeText: string; orderReliable: boolean;
+  skipped?: boolean;
   images: Array<InputImage & { hash: string; width: number; height: number }>;
 };
 type Attempt = { at: number; requestHash: string; reservedMicros: number; model?: ExtractionModel; price?: ExtractionPrice };

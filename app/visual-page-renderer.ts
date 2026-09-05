@@ -24,7 +24,7 @@ export async function createVisualPageRenderer(file: File) {
     fingerprint,
     pageCount: pdf.numPages,
     destroy: () => loading.destroy(),
-    async prepareExtraction(request: ExtractionPageRequest, sourceFingerprint: string, options?: { fallbackPng?: boolean }) {
+    async prepareExtraction(request: ExtractionPageRequest, sourceFingerprint: string, options?: { retry?: 0 | 1 | 2 | 3 }) {
       if (fingerprint !== sourceFingerprint) throw new Error("Select the same PDF used for this job.");
       const requests = extractionRenderRequests(request.pageIndex, request.revision);
       if (request.parts !== requests.length || request.allowNative !== (request.revision === 0) || request.pageIndex >= pdf.numPages) throw new Error("Invalid page preparation request");
@@ -54,8 +54,14 @@ export async function createVisualPageRenderer(file: File) {
       }
       const images = [];
       if (!nativeTextUsable(nativeText, orderReliable)) {
-        const limits = options?.fallbackPng
-          ? { edge: 1000, bytes: 384 * 1024, format: "png" as const }
+        const retryLimits = [
+          undefined,
+          { edge: 1000, bytes: 256 * 1024, format: "png" as const },
+          { edge: 900, bytes: 128 * 1024, format: "jpeg" as const },
+          { edge: 640, bytes: 96 * 1024, format: "jpeg" as const },
+        ];
+        const limits = options?.retry
+          ? retryLimits[options.retry]
           : request.compact ? { edge: 1400, bytes: 192 * 1024, format: "jpeg" as const } : undefined;
         for (const part of requests) images.push(await renderer.render(part, sourceFingerprint, limits));
       }
