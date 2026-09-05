@@ -151,6 +151,14 @@ export class BookJobClient {
     });
   }
 
+  async downloadSource(job: ResumableBookJob, signal: AbortSignal): Promise<File> {
+    const response = await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/source`, {
+      headers: this.headers(job), signal,
+    });
+    if (!response.ok) throw new BookJobClientError("source_file_needed", "Select the original PDF to prepare the selected illustrations.", response.status);
+    return new File([await response.blob()], job.filename, { type: "application/pdf" });
+  }
+
   async uploadExtractionAsset(job: ResumableBookJob, asset: unknown, signal?: AbortSignal): Promise<void> {
     const page = asset && typeof asset === "object" && "pageIndex" in asset && typeof asset.pageIndex === "number" ? asset.pageIndex + 1 : undefined;
     await this.uploadJson(job, `/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, asset, signal, page ? `Uploading PDF page ${page}` : "Uploading a prepared page");

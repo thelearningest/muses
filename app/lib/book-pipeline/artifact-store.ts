@@ -85,6 +85,28 @@ export class BookArtifactStore {
     });
   }
 
+  async putPdfIfAbsent(jobId: string, path: string, bytes: Uint8Array, expiresAt: number): Promise<boolean> {
+    return (await this.bucket.put(artifactKey(jobId, path), bytes, {
+      onlyIf: { etagDoesNotMatch: "*" }, httpMetadata: { contentType: "application/pdf" }, customMetadata: expiryMetadata(expiresAt),
+    })) !== null;
+  }
+
+  async backgroundResponseIds(jobId: string): Promise<string[]> {
+    const prefix = artifactKey(jobId, "operations/calls/marker").replace(/marker$/, "");
+    const ids = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const page = await this.bucket.list({ prefix, limit: 1000, ...(cursor ? { cursor } : {}) });
+      for (const object of page.objects.filter((item) => item.key.endsWith(".pending.json"))) {
+        const receipt = await this.bucket.get(object.key);
+        const value = receipt ? JSON.parse(await receipt.text()) : null;
+        if (typeof value?.responseId === "string" && /^resp_[A-Za-z0-9_-]+$/.test(value.responseId)) ids.add(value.responseId);
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    return [...ids];
+  }
+
   async getJson<T>(jobId: string, relativePath: string): Promise<T | null> {
     const resolved = await this.references?.artifactPath(jobId,relativePath);
     const object = await this.bucket.get(artifactKey(jobId, resolved ?? relativePath));

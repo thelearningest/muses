@@ -10,6 +10,8 @@ import { BookJobRepository as D1BookJobRepository } from "./job-repository";
 import type { SafeBookJobErrorCategory } from "./contracts";
 import { publicStageFor } from "./state-machine";
 import { MistralOcrProvider } from "./providers/mistral";
+import { OpenAiResponsesProvider } from "./providers/openai";
+import { mapConcurrent } from "./parallel";
 import {
   assertSameOrigin,
   createCapabilityToken,
@@ -275,7 +277,8 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
         const jobId = dependencies.newId();
         // Pin before the DB record becomes visible. A failed R2 write must not
         // leave a new job indistinguishable from a legacy Mistral job.
-        await dependencies.store.putJson(jobId, "ingestion.json", { version: 3, provider: dependencies.config.ocrProvider, parallelQuests: true, batchedExtraction: true }, now + dependencies.config.sourceRecoveryHours * 3_600);
+        await dependencies.store.putJson(jobId, "ingestion.json", { version: 4, provider: dependencies.config.ocrProvider, parallelQuests: true, batchedExtraction: true,
+          ...(dependencies.config.ocrProvider === "luna" ? { directPdf: true } : {}) }, now + dependencies.config.sourceRecoveryHours * 3_600);
         await dependencies.repository.createJob({
           id: jobId,
           capabilityHash: await hashPrivateValue(
@@ -404,7 +407,7 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
         await sweepExpired();
         requireMutationOrigin(request);
         const job = await authorize(jobId, request);
-        if (job.status === "cancelled" || job.status === "cleaned") return new Response(null, { status: 204 });
+        if (job.status === "cleaned" || (job.status === "cancelled" && job.cleanupState === "complete")) return new Response(null, { status: 204 });
         await dependencies.repository.requestCancellation(jobId, job.capabilityHash, dependencies.now());
         await dependencies.repository.markTerminal(
           jobId,
@@ -428,11 +431,17 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
         requireMutationOrigin(request);
         const job = await authorize(jobId, request);
         if (job.status === "acknowledged" || job.status === "cleaned") {
+          if (job.cleanupState !== "complete") {
+            await dependencies.cleanupProviderArtifacts?.(job);
+            await dependencies.store.deleteJobArtifacts(jobId);
+            await dependencies.repository.markCleanupState(jobId, "complete", dependencies.now());
+          }
           return new Response(null, { status: 204 });
         }
         if (!(await dependencies.repository.acknowledge(jobId, job.capabilityHash, dependencies.now()))) {
           throw new HttpProblem(409, "game_not_ready", "The game must be saved before acknowledgment.");
         }
+        await dependencies.cleanupProviderArtifacts?.(job);
         await dependencies.store.deleteJobArtifacts(jobId);
         await dependencies.repository.markCleanupState(jobId, "complete", dependencies.now());
         return new Response(null, { status: 204 });
@@ -443,23 +452,38 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
 
     async source(jobId: string, request: Request): Promise<Response> {
       try {
-        await sweepExpired();
-        const token = new URL(request.url).searchParams.get("token");
-        if (!token) throw new HttpProblem(401, "invalid_provider_token", "A provider token is required.");
-        await verifyPurposeToken(
+        // Provider downloads must not wait on unrelated expired-job API cleanup.
+        // Capability/token expiry still protects every source read.
+        const url = new URL(request.url);
+        const token = url.searchParams.get("token");
+        const section = url.searchParams.get("section");
+        let path = "source.pdf";
+        if (readBearerToken(request) && section === null) {
+          const job = await authorize(jobId, request);
+          if (job.cancellationRequested || ["cancelled", "cleaned", "acknowledged"].includes(job.status)) throw new HttpProblem(404, "source_not_found", "The source is unavailable.");
+        } else {
+          if (!token) throw new HttpProblem(401, "invalid_provider_token", "A provider token is required.");
+          const payload = await verifyPurposeToken(
           token,
           jobId,
-          "ocr-source",
+          section === null ? "ocr-source" : "pdf-section",
           dependencies.now(),
           dependencies.providerUrlHmacKey,
-        );
-        const object = await dependencies.store.get(jobId, "source.pdf");
+          );
+          if (section !== null) {
+            if (!/^(0|[1-9][0-9]?)$/.test(section) || Number(section) > 37 || payload.section !== Number(section)) throw new HttpProblem(401, "invalid_provider_token", "The section token is invalid.");
+            path = `extraction/sections/${section}.pdf`;
+          }
+        }
+        const object = await dependencies.store.get(jobId, path);
         if (!object) throw new HttpProblem(404, "source_not_found", "The source is unavailable.");
         const body = object.body ?? (await object.arrayBuffer());
         return new Response(body, {
           headers: {
             "content-type": "application/pdf",
             "cache-control": "private, no-store",
+            "referrer-policy": "no-referrer",
+            "x-content-type-options": "nosniff",
           },
         });
       } catch (error) {
@@ -496,6 +520,11 @@ export async function createRuntimeBookJobApi() {
     newId: () => crypto.randomUUID(),
     newCapability: createCapabilityToken,
     cleanupProviderArtifacts: async (job) => {
+      if (typeof env.OPENAI_API_KEY === "string") {
+        const store = new BookArtifactStore(env.BOOK_JOBS);
+        const provider = new OpenAiResponsesProvider(env.OPENAI_API_KEY);
+        await mapConcurrent(await store.backgroundResponseIds(job.id), 4, (id) => provider.deleteBackground(id));
+      }
       if (!mistralApiKey || !job.mistralBatchId) return;
       const provider = new MistralOcrProvider(mistralApiKey);
       await Promise.allSettled([

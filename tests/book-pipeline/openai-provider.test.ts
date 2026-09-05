@@ -5,6 +5,23 @@ const request = { model: "gpt-5.6-luna", reasoningEffort: "none" as const, schem
 const valid = { id: "resp_test", status: "completed", output_text: '{"ok":true}', usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 } };
 
 describe("paid provider failure boundaries", () => {
+  it("sends a PDF directly and persists a background response for polling", async () => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({ background: true, store: true, stream: false, max_output_tokens: 6000 });
+      expect(body.input[0].content[1]).toEqual({ type: "input_file", file_url: "https://books.test/section.pdf", detail: "high" });
+      return Response.json({ id: "resp_pdf", status: "queued" });
+    });
+    expect(await new OpenAiResponsesProvider("test", fetcher).startBackground({ ...request, maxOutputTokens: 6000, files: [{ fileUrl: "https://books.test/section.pdf", detail: "high" }] })).toBe("resp_pdf");
+  });
+  it("polls completed results with GET and preserves usage", async () => {
+    const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.method).toBeUndefined();
+      expect(init?.body).toBeUndefined();
+      return Response.json(valid);
+    });
+    expect(await new OpenAiResponsesProvider("test", fetcher).collectBackground("resp_test")).toMatchObject({ data: { ok: true }, usage: { totalTokens: 12 } });
+  });
   it("consumes fragmented streaming events and uses only terminal output and usage", async () => {
     const wire = `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "ignore" })}\n\ndata: ${JSON.stringify({ type: "response.completed", response: valid })}\n\n`;
     const fetcher = vi.fn(async (_url: string, init?: RequestInit) => {

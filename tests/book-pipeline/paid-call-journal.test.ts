@@ -4,7 +4,7 @@ import { BookJobRepository } from "../../app/lib/book-pipeline/job-repository";
 import { BookOperationRepository, type StageOwner } from "../../app/lib/book-pipeline/operation-repository";
 import { PaidCallJournal } from "../../app/lib/book-pipeline/paid-call-journal";
 import { durableStage } from "../../app/lib/book-pipeline/durable-stage";
-import { OpenAiOutputLimitError, OpenAiRejectedRequestError } from "../../app/lib/book-pipeline/providers/openai";
+import { OpenAiBackgroundPending, OpenAiOutputLimitError, OpenAiRejectedRequestError } from "../../app/lib/book-pipeline/providers/openai";
 import type { StructuredOutputProvider } from "../../app/lib/book-pipeline/providers/openai";
 import { MigratedD1 } from "./sqlite-d1";
 import { ConditionalR2 } from "./durable-fixture";
@@ -20,6 +20,32 @@ describe("paid result recovery and atomic artifact publication", () => {
     db.database.exec("UPDATE book_jobs SET status='generating_game',current_stage='generating_game'"); owner = (await operations.acquire(identity))!;
   });
   afterEach(() => db.close());
+  it("collects the same background request across fresh stage owners without spending again", async () => {
+    const start = vi.fn(async () => "resp_saved");
+    const collect = vi.fn<() => Promise<string>>().mockRejectedValueOnce(new OpenAiBackgroundPending()).mockResolvedValue("finished");
+    const remove = vi.fn(async () => {});
+    const execute = () => journal().execute("pdf-section", vi.fn(), () => 10, undefined, undefined, { start, collect, remove });
+    await expect(execute()).rejects.toBeInstanceOf(OpenAiBackgroundPending);
+    expect(await operations.latestCall(owner, 0)).toMatchObject({ state: "pending", reserved_units: 100 });
+    await operations.release(owner); now += 1000; owner = (await operations.acquire(identity))!;
+    await expect(execute()).rejects.toBeInstanceOf(OpenAiBackgroundPending);
+    await operations.release(owner); owner = (await operations.acquire(identity))!;
+    expect(await execute()).toBe("finished");
+    expect(await execute()).toBe("finished");
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(collect).toHaveBeenCalledTimes(2);
+    expect(remove).toHaveBeenCalledWith("resp_saved");
+    expect(await operations.latestCall(owner, 0)).toMatchObject({ state: "complete", attempt: 0, reserved_units: 0, actual_units: 10 });
+  });
+  it("retains an uncertain submission reservation when the receipt cannot be saved", async () => {
+    const start = vi.fn(async () => "resp_unsaved");
+    vi.spyOn(store, "putJsonIfAbsent").mockRejectedValueOnce(new Error("storage offline"));
+    const execute = () => journal().execute("pdf-section", vi.fn(), () => 10, undefined, undefined, { start, collect: vi.fn() });
+    await expect(execute()).rejects.toThrow();
+    await expect(execute()).rejects.toThrow();
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(await operations.latestCall(owner, 0)).toMatchObject({ state: "unknown", reserved_units: 100 });
+  });
   it("replays partitioned calls even when sibling completion order changes", async () => {
     const send = vi.fn(async () => ({ responseId: "response", data: {}, usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } }));
     const provider = { generateStructured: send } as StructuredOutputProvider;

@@ -59,8 +59,9 @@ export function createExtractionApi(deps: {
         return job;
       };
       const job = await active();
-      const ingestion = await deps.store.getJson<{ provider: string; batchedExtraction?: boolean }>(jobId, "ingestion.json");
+      const ingestion = await deps.store.getJson<{ provider: string; batchedExtraction?: boolean; directPdf?: boolean }>(jobId, "ingestion.json");
       if (ingestion?.provider !== "luna") throw new Rejected("wrong_extraction_provider", 409);
+      if (ingestion.directPdf) throw new Rejected("server_managed_extraction", 409);
       if (request.method === "POST") {
         const value = manifestSchema.parse(await boundedJson(request, 2048));
         if (value.sourceFingerprint !== job.sourceFingerprint || value.pageCount > deps.maxPages) throw new Rejected("invalid_extraction_manifest", 400);

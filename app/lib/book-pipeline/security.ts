@@ -56,7 +56,8 @@ export function assertSameOrigin(request: Request): void {
 
 export type PurposeTokenPayload = {
   jobId: string;
-  purpose: "ocr-source" | "browser-upload";
+  purpose: "ocr-source" | "browser-upload" | "pdf-section";
+  section?: number;
   expiresAt: number;
 };
 

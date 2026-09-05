@@ -49,7 +49,11 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    const pending = handler.fetch(request, env, ctx);
+    // Preserve the short background-submission receipt if the browser leaves.
+    // Workers grants only a bounded grace period here, not a durable scheduler.
+    ctx.waitUntil(pending.then(() => undefined, () => undefined));
+    return pending;
   },
 };
 

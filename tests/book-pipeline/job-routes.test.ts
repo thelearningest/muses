@@ -6,6 +6,7 @@ import {
   type BookJobApiDependencies,
 } from "../../app/lib/book-pipeline/http";
 import { DEFAULT_BOOK_PIPELINE_CONFIG } from "../../app/lib/book-pipeline/config";
+import { createPurposeToken } from "../../app/lib/book-pipeline/security";
 
 function request(path: string, init?: RequestInit) {
   return new Request(`https://books.example${path}`, {
@@ -84,6 +85,28 @@ function makeDependencies(overrides: Partial<BookJobApiDependencies> = {}) {
 }
 
 describe("book job routes", () => {
+  it("serves only the section named in an unexpired provider token", async () => {
+    const deps = makeDependencies();
+    const get = vi.fn(async (_job: string, path: string) => ({ key: path, text: async () => "", arrayBuffer: async () => new TextEncoder().encode("%PDF-section").buffer }));
+    deps.store.get = get;
+    const api = createBookJobApi(deps);
+    const token = await createPurposeToken({ jobId: "job-1", purpose: "pdf-section", section: 2, expiresAt: 2000 }, deps.providerUrlHmacKey);
+    expect((await api.source("job-1", request(`/api/book-jobs/job-1/source?section=2&token=${token}`))).status).toBe(200);
+    expect(get).toHaveBeenCalledWith("job-1", "extraction/sections/2.pdf");
+    expect((await api.source("job-1", request(`/api/book-jobs/job-1/source?section=3&token=${token}`))).status).toBe(401);
+    expect((await api.source("job-1", request(`/api/book-jobs/job-1/source?token=${token}`))).status).not.toBe(200);
+    expect((await api.source("job-1", request("/api/book-jobs/job-1/source?section=2"))).status).toBe(401);
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+  it("recovers the original source using the browser job capability", async () => {
+    const deps = makeDependencies();
+    const get = vi.fn(async () => ({ key: "source.pdf", text: async () => "", arrayBuffer: async () => new TextEncoder().encode("%PDF-source").buffer }));
+    deps.store.get = get;
+    const response = await createBookJobApi(deps).source("job-1", request("/api/book-jobs/job-1/source", { headers: { authorization: "Bearer capability-token" } }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(get).toHaveBeenCalledWith("job-1", "source.pdf");
+  });
   it.each([
     ["missing rights", { rightsConfirmed: false }, 400],
     ["invalid Turnstile", { turnstileToken: "bad" }, 403],

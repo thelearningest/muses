@@ -153,7 +153,7 @@ export function JobProgress({ job, status, preparation, needsSourceFile, onSourc
         </div>
         <progress aria-label={`${progressLabel}, ${percent}% overall`} max={100} value={percent} />
       </div>
-      <p className="generation-note">Keep this tab visible while we prepare your pages. If you switch tabs, preparation pauses and resumes when you return.</p>
+      <p className="generation-note">{preparing ? "Keep this tab visible while the selected pages are prepared." : "Your book is read on the server. Progress is saved; return to this page to continue if you close it."}</p>
       {preparing && !paused && !hidden && phase && <p className="generation-note">{phase}</p>}
       {paused && <p className="job-interruption">Your completed steps are saved. Resume to continue from here.</p>}
       {needsSourceFile && (
@@ -186,7 +186,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
   const [locallyPaused, setLocallyPaused] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [preparationPhase, setPreparationPhase] = useState("");
-  const [needsSourceFile, setNeedsSourceFile] = useState(true);
+  const [needsSourceFile, setNeedsSourceFile] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const clientRef = useRef(new BookJobClient());
   const sourceFile = useRef<File | null>(null);
@@ -199,18 +199,6 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     return () => document.removeEventListener("visibilitychange", changed);
   }, []);
 
-  useEffect(() => {
-    const reloadKey = "playable-books:renderer-reload";
-    void loadVisualPageRendererModule().then((module) => module.preloadVisualPageRenderer()).then(() => {
-      window.sessionStorage.removeItem(reloadKey);
-    }).catch(() => {
-      visualPageRendererModulePromise = undefined;
-      if (!window.sessionStorage.getItem(reloadKey)) {
-        window.sessionStorage.setItem(reloadKey, "1");
-        window.location.reload();
-      }
-    });
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -244,7 +232,11 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     const rendererSession = createRecoverableRenderer({
       signal: controller.signal,
       open: async () => {
-        if (!sourceFile.current) throw new Error("Select the same PDF below to continue processing it.");
+        if (!sourceFile.current) {
+          reportPhase("Retrieving the selected illustrations from your saved book");
+          try { sourceFile.current = await clientRef.current.downloadSource(job, controller.signal); }
+          catch (error) { if (!controller.signal.aborted) setNeedsSourceFile(true); throw error; }
+        }
         const { createVisualPageRenderer } = await browserOperation({ signal: controller.signal, phase: "Loading the PDF renderer", milliseconds: 60_000, visibleOnly: true, run: () => loadVisualPageRendererModule() });
         return createVisualPageRenderer(sourceFile.current, controller.signal, reportPhase);
       },

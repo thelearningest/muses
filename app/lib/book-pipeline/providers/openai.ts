@@ -13,10 +13,18 @@ export type StructuredResponse<T> = {
 };
 
 export type InputImage = { imageUrl: string; detail: "low" | "high"; label: string; width?: number; height?: number };
+export type InputPdf = { fileUrl: string; detail: "low" | "high" };
+export class OpenAiBackgroundPending extends Error {
+  constructor() { super("The model is still processing this section"); this.name = "OpenAiBackgroundPending"; }
+}
 
 export interface StructuredOutputProvider {
   /** Stable independent call sequence, used for concurrent quest work. */
   partition?(index: number): StructuredOutputProvider;
+  startBackground?(input: StructuredRequest): Promise<string>;
+  collectBackground?<T>(id: string): Promise<StructuredResponse<T>>;
+  deleteBackground?(id: string): Promise<void>;
+  countInputTokens?(input: StructuredRequest): Promise<number>;
   generateStructured<T>(input: {
     model: string;
     reasoningEffort: ReasoningEffort;
@@ -26,10 +34,25 @@ export interface StructuredOutputProvider {
     input: string;
     safetyIdentifier: string;
     images?: InputImage[];
+    files?: InputPdf[];
+    background?: boolean;
+    reservedTokenUnits?: number;
     maxOutputTokens?: number;
     // Internal admission metadata; deliberately never forwarded to OpenAI.
     visualBudget?: VisualCallBudget & { inputPrice: number; outputPrice: number };
   }): Promise<StructuredResponse<T>>;
+}
+export type StructuredRequest = Parameters<StructuredOutputProvider["generateStructured"]>[0];
+
+export function responsesInput(input: Pick<StructuredRequest, "input" | "images" | "files">) {
+  return input.images?.length || input.files?.length ? [{ role: "user", content: [
+    { type: "input_text", text: input.input },
+    ...(input.files ?? []).map((file) => ({ type: "input_file", file_url: file.fileUrl, detail: file.detail })),
+    ...(input.images ?? []).flatMap((image) => [
+      { type: "input_text", text: image.label },
+      { type: "input_image", image_url: image.imageUrl, detail: image.detail },
+    ]),
+  ] }] : input.input;
 }
 
 export class OpenAiIndeterminateRequestError extends Error {
@@ -67,13 +90,13 @@ export class OpenAiRejectedRequestError extends Error {
   constructor(status: number) { super(`OpenAI request rejected with status ${status}`); this.name = "OpenAiRejectedRequestError"; }
 }
 
-export async function paidRequest(fetcher: Fetcher, url: string, apiKey: string, payload: unknown): Promise<Response> {
+export async function paidRequest(fetcher: Fetcher, url: string, apiKey: string, payload: unknown, milliseconds = 240_000): Promise<Response> {
   // Serialization errors happen before transmission and must not consume a
   // reservation. Once fetch starts, an exception cannot prove non-processing.
   const body = JSON.stringify(payload);
   let response: Response;
   try {
-    response = await fetcher(url, { method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, signal: AbortSignal.timeout(240_000), body });
+    response = await fetcher(url, { method: "POST", headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" }, signal: AbortSignal.timeout(milliseconds), body });
   } catch {
     console.warn("OpenAI request failed", { category: "transport" });
     throw new OpenAiIndeterminateRequestError();
@@ -146,17 +169,70 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
     private readonly serviceTier?: "fast",
   ) {}
 
-  async generateStructured<T>(input: {
-    model: string;
-    reasoningEffort: ReasoningEffort;
-    schemaName: string;
-    schema: unknown;
-    instructions: string;
-    input: string;
-    safetyIdentifier: string;
-    images?: InputImage[];
-    maxOutputTokens?: number;
-  }): Promise<StructuredResponse<T>> {
+  async countInputTokens(input: StructuredRequest): Promise<number> {
+    const response = await this.fetcher(`${RESPONSES_URL}/input_tokens`, {
+      method: "POST", headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
+      signal: AbortSignal.timeout(30_000),
+      body: JSON.stringify({ model: input.model, input: responsesInput(input),
+        instructions: `${input.instructions}\nOutput schema: ${JSON.stringify(input.schema)}` }),
+    });
+    if (!response.ok) throw new Error("PDF token counting unavailable");
+    const value = await response.json() as { input_tokens?: number };
+    if (!Number.isSafeInteger(value.input_tokens) || value.input_tokens! <= 0) throw new Error("Invalid PDF token count");
+    return value.input_tokens!;
+  }
+
+  async startBackground(input: StructuredRequest): Promise<string> {
+    if (!input.maxOutputTokens || !Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens > 16000 || input.maxOutputTokens < 1) throw new TypeError("Invalid output limit");
+    const response = await paidRequest(this.fetcher, RESPONSES_URL, this.apiKey, {
+      model: input.model, background: true, store: true, stream: false,
+      ...(this.serviceTier ? { service_tier: this.serviceTier } : {}),
+      reasoning: { effort: input.reasoningEffort }, instructions: input.instructions,
+      input: responsesInput(input), max_output_tokens: input.maxOutputTokens,
+      safety_identifier: input.safetyIdentifier.slice(0, 64),
+      text: { format: { type: "json_schema", name: input.schemaName, strict: true, schema: input.schema } },
+    }, 30_000);
+    const value = await responseObject(response);
+    if (typeof value.id !== "string" || !/^resp_[A-Za-z0-9_-]+$/.test(value.id)) throw new OpenAiUnusableResultError();
+    return value.id;
+  }
+
+  async collectBackground<T>(id: string): Promise<StructuredResponse<T>> {
+    if (!/^resp_[A-Za-z0-9_-]+$/.test(id)) throw new TypeError("Invalid response id");
+    let response: Response;
+    try {
+      response = await this.fetcher(`${RESPONSES_URL}/${id}`, {
+        headers: { authorization: `Bearer ${this.apiKey}` }, signal: AbortSignal.timeout(30_000),
+      });
+    } catch { throw new OpenAiBackgroundPending(); }
+    // A failed read never authorizes another paid submission.
+    if (response.status === 429 || response.status >= 500) throw new OpenAiBackgroundPending();
+    if (!response.ok) throw new OpenAiUnusableResultError();
+    let value: Record<string, unknown>;
+    try { value = await responseObject(response); } catch { throw new OpenAiBackgroundPending(); }
+    if (["queued", "in_progress"].includes(String(value.status))) throw new OpenAiBackgroundPending();
+    return parseStructuredResponse<T>(value, response.headers.get("x-request-id"));
+  }
+
+  async deleteBackground(id: string): Promise<void> {
+    if (!/^resp_[A-Za-z0-9_-]+$/.test(id)) throw new TypeError("Invalid response id");
+    await this.cancelBackground(id);
+    const response = await this.fetcher(`${RESPONSES_URL}/${id}`, {
+      method: "DELETE", headers: { authorization: `Bearer ${this.apiKey}` }, signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok && response.status !== 404) throw new Error("Response cleanup incomplete");
+  }
+
+  async cancelBackground(id: string): Promise<void> {
+    if (!/^resp_[A-Za-z0-9_-]+$/.test(id)) throw new TypeError("Invalid response id");
+    const response = await this.fetcher(`${RESPONSES_URL}/${id}/cancel`, {
+      method: "POST", headers: { authorization: `Bearer ${this.apiKey}` }, signal: AbortSignal.timeout(15_000),
+    });
+    // A completed or already deleted response no longer needs cancellation.
+    if (!response.ok && ![400, 404, 409].includes(response.status)) throw new Error("Response cancellation incomplete");
+  }
+
+  async generateStructured<T>(input: StructuredRequest): Promise<StructuredResponse<T>> {
     if (input.maxOutputTokens !== undefined && (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens < 1 || input.maxOutputTokens > 16000)) throw new TypeError("Invalid output limit");
     const response = await paidRequest(this.fetcher, RESPONSES_URL, this.apiKey, {
       model: input.model,
@@ -165,13 +241,7 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
       ...(this.serviceTier ? { service_tier: this.serviceTier } : {}),
       reasoning: { effort: input.reasoningEffort },
       instructions: input.instructions,
-      input: input.images?.length ? [{ role: "user", content: [
-        { type: "input_text", text: input.input },
-        ...input.images.flatMap((image) => [
-          { type: "input_text", text: image.label },
-          { type: "input_image", image_url: image.imageUrl, detail: image.detail },
-        ]),
-      ] }] : input.input,
+      input: responsesInput(input),
       ...(input.maxOutputTokens ? { max_output_tokens: input.maxOutputTokens } : {}),
       safety_identifier: input.safetyIdentifier.slice(0, 64),
       text: {
@@ -184,37 +254,9 @@ export class OpenAiResponsesProvider implements StructuredOutputProvider {
       },
     });
     const value = await responseObject(response);
-    if (value.status !== "completed" || typeof value.id !== "string" || !value.id) {
-      const details = value.incomplete_details as { reason?: unknown } | undefined;
-      const outputLimited = value.status === "incomplete" && details?.reason === "max_output_tokens";
-      console.warn("OpenAI request failed", { category: "unusable_response", requestId: response.headers.get("x-request-id"),
-        status: ["completed", "incomplete", "failed", "cancelled", "queued", "in_progress"].includes(String(value.status)) ? value.status : "unknown",
-        reason: details?.reason === "max_output_tokens" || details?.reason === "content_filter" ? details.reason : "unknown" });
-      if (outputLimited) throw new OpenAiOutputLimitError();
-      throw new OpenAiUnusableResultError();
-    }
-    const text = outputText(value);
-    if (!text) { console.warn("OpenAI request failed", { category: "missing_output", requestId: response.headers.get("x-request-id") }); throw new OpenAiUnusableResultError(); }
-    let data: T;
-    try { data = JSON.parse(text) as T; } catch { console.warn("OpenAI request failed", { category: "output_json", requestId: response.headers.get("x-request-id") }); throw new OpenAiUnusableResultError(); }
-    const usage = (value.usage ?? {}) as Record<string, unknown>;
-    const details = (usage.input_tokens_details ?? {}) as Record<string, unknown>;
-    const counts = [usage.input_tokens, usage.output_tokens, usage.total_tokens];
-    if (counts.some((n) => typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) ||
-      Number(usage.input_tokens) <= 0 || usage.total_tokens !== Number(usage.input_tokens) + Number(usage.output_tokens)) throw new OpenAiUnusableResultError();
-    return {
-      responseId: value.id,
-      requestId: response.headers.get("x-request-id") ?? undefined,
-      data,
-      usage: {
-        inputTokens: Number(usage.input_tokens ?? 0),
-        outputTokens: Number(usage.output_tokens ?? 0),
-        totalTokens: Number(usage.total_tokens ?? 0),
-        cachedInputTokens: Number(details.cached_tokens ?? 0),
-        cacheWriteTokens: Number(details.cache_write_tokens ?? details.cache_creation_tokens ?? 0),
-      },
-    };
+    return parseStructuredResponse<T>(value, response.headers.get("x-request-id"));
   }
+
 }
 
 export class OpenAiEmbeddingsProvider {
@@ -236,3 +278,36 @@ export class OpenAiEmbeddingsProvider {
     return { vectors, requestId: response.headers.get("x-request-id") ?? undefined };
   }
 }
+
+export function parseStructuredResponse<T>(value: Record<string, unknown>, requestId: string | null): StructuredResponse<T> {
+    if (value.status !== "completed" || typeof value.id !== "string" || !value.id) {
+      const details = value.incomplete_details as { reason?: unknown } | undefined;
+      const outputLimited = value.status === "incomplete" && details?.reason === "max_output_tokens";
+      console.warn("OpenAI request failed", { category: "unusable_response", requestId: requestId,
+        status: ["completed", "incomplete", "failed", "cancelled", "queued", "in_progress"].includes(String(value.status)) ? value.status : "unknown",
+        reason: details?.reason === "max_output_tokens" || details?.reason === "content_filter" ? details.reason : "unknown" });
+      if (outputLimited) throw new OpenAiOutputLimitError();
+      throw new OpenAiUnusableResultError();
+    }
+    const text = outputText(value);
+    if (!text) { console.warn("OpenAI request failed", { category: "missing_output", requestId: requestId }); throw new OpenAiUnusableResultError(); }
+    let data: T;
+    try { data = JSON.parse(text) as T; } catch { console.warn("OpenAI request failed", { category: "output_json", requestId: requestId }); throw new OpenAiUnusableResultError(); }
+    const usage = (value.usage ?? {}) as Record<string, unknown>;
+    const details = (usage.input_tokens_details ?? {}) as Record<string, unknown>;
+    const counts = [usage.input_tokens, usage.output_tokens, usage.total_tokens];
+    if (counts.some((n) => typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) ||
+      Number(usage.input_tokens) <= 0 || usage.total_tokens !== Number(usage.input_tokens) + Number(usage.output_tokens)) throw new OpenAiUnusableResultError();
+    return {
+      responseId: value.id,
+      requestId: requestId ?? undefined,
+      data,
+      usage: {
+        inputTokens: Number(usage.input_tokens ?? 0),
+        outputTokens: Number(usage.output_tokens ?? 0),
+        totalTokens: Number(usage.total_tokens ?? 0),
+        cachedInputTokens: Number(details.cached_tokens ?? 0),
+        cacheWriteTokens: Number(details.cache_write_tokens ?? details.cache_creation_tokens ?? 0),
+      },
+    };
+  }

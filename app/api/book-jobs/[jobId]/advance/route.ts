@@ -23,8 +23,9 @@ import { runVisualStage } from "@/app/lib/book-pipeline/visual-agent/stage";
 import { prepareBatchReferences } from "@/app/lib/book-pipeline/visual-agent/batch-references";
 import { VisualQuestProvider } from "@/app/lib/book-pipeline/visual-agent/quest-provider";
 import { advanceExtraction } from "@/app/lib/book-pipeline/extraction/stage";
-import { advanceBatchExtraction, BATCH_STATE_PATH, pendingBatchExtractionRequests, type BatchExtractionState } from "@/app/lib/book-pipeline/extraction/batch";
+import { advanceBatchExtraction, BATCH_STATE_PATH, PdfCoverageError, pendingBatchExtractionRequests, type BatchExtractionState } from "@/app/lib/book-pipeline/extraction/batch";
 import { lunaLimits } from "@/app/lib/book-pipeline/extraction/http";
+import { prepareDirectPdf, InvalidSourcePdf } from "@/app/lib/book-pipeline/extraction/direct-pdf";
 import { BookOperationRepository } from "@/app/lib/book-pipeline/operation-repository";
 import { durableStage } from "@/app/lib/book-pipeline/durable-stage";
 import { operationHash } from "@/app/lib/book-pipeline/paid-call-journal";
@@ -95,9 +96,25 @@ export async function POST(request: Request, context: Context) {
     );
     const operations = new BookOperationRepository(env.DB);
     let store = new BookArtifactStore(env.BOOK_JOBS,operations);
-    const ingestion = await store.getJson<{ provider: string; parallelQuests?: boolean; batchedExtraction?: boolean }>(job.id, "ingestion.json");
+    const ingestion = await store.getJson<{ provider: string; parallelQuests?: boolean; batchedExtraction?: boolean; directPdf?: boolean }>(job.id, "ingestion.json");
     const parallelQuests = ingestion?.parallelQuests === true;
     if (job.cancellationRequested || ["cancelled", "failed_terminal", "complete", "acknowledged", "cleaned"].includes(job.status)) return Response.json({ outcome: "inactive" });
+    if (job.status === "uploaded" && ingestion?.directPdf) {
+      try {
+        const state = await prepareDirectPdf({ job, store, limits: lunaLimits(env, "BOOK_EXTRACTION"), maxPages: config.maxPages,
+          isActive: async () => {
+            const latest = await repository.getAuthorizedJob(jobId, capabilityHash);
+            return !!latest && latest.status === "uploaded" && !latest.cancellationRequested && latest.expiresAt > Date.now() / 1000;
+          } });
+        if (!state) return Response.json({ outcome: "waiting" }, { status: 202 });
+        await repository.claimStage({ jobId, capabilityHash, expectedStatus: "uploaded", claimedStatus: "extracting_pages", now: Math.floor(Date.now() / 1000) });
+        return Response.json({ outcome: "advanced" });
+      } catch (error) {
+        if (!(error instanceof InvalidSourcePdf)) throw error;
+        await repository.markTerminal(jobId, "failed_terminal", error.code, Math.floor(Date.now() / 1000), job.expiresAt, "uploaded");
+        return Response.json({ outcome: "terminal" });
+      }
+    }
     let batchState: BatchExtractionState | null = null;
     if (job.status === "extracting_pages" && ingestion?.batchedExtraction) {
       batchState = await store.getJson<BatchExtractionState>(job.id, BATCH_STATE_PATH);
@@ -133,10 +150,18 @@ export async function POST(request: Request, context: Context) {
         if (!state) throw new Error("Extraction manifest missing");
         try {
           const result = await advanceBatchExtraction({ job, state, store, isActive: isStageActive,
-            provider: durable!.journal.structured(openAi()), assetsReady: true });
+            provider: durable!.journal.structured(openAi()), assetsReady: true,
+            sectionUrl: async (index) => {
+              const sectionToken = await createPurposeToken({ jobId, purpose: "pdf-section", section: index, expiresAt: job.expiresAt }, required(env.BOOK_PROVIDER_URL_HMAC_KEY, "BOOK_PROVIDER_URL_HMAC_KEY"));
+              return `${new URL(request.url).origin}/api/book-jobs/${encodeURIComponent(jobId)}/source?section=${index}&token=${encodeURIComponent(sectionToken)}`;
+            } });
           if (result.outcome === "complete" && !await durable!.repository.commitStage({ jobId: job.id, expectedStatus: "extracting_pages", nextStatus: "annotating_visuals", batchCursor: 0, now })) return Response.json({ outcome: "inactive" });
           return Response.json(result, { headers: { "cache-control": "no-store" } });
-        } catch {
+        } catch (error) {
+          if (error instanceof PdfCoverageError) {
+            await durable!.repository.markTerminal(job.id, "failed_terminal", "extraction_quality_insufficient", now, job.expiresAt, "extracting_pages");
+            return Response.json({ outcome: "terminal" });
+          }
           await durable!.repository.markRecoverable(job.id, "extracting_pages", "manual_retry_required", "manual_retry_required", now);
           return Response.json({ outcome: "interrupted", reason: "manual_retry_required" }, { headers: { "cache-control": "no-store" } });
         }
