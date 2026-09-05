@@ -1,13 +1,23 @@
-import * as pdfjs from "pdfjs-dist";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { fingerprintFile } from "./book-job-client";
 import type { RenderRequest } from "./lib/book-pipeline/visual-agent/schema";
 import type { ExtractionPageRequest } from "./lib/book-pipeline/extraction/stage";
 import { extractionRenderRequests, nativeTextUsable } from "./lib/book-pipeline/extraction/policy";
 
+type PdfJs = typeof import("pdfjs-dist");
+let pdfRuntimePromise: Promise<{ pdfjs: PdfJs; workerUrl: string }> | undefined;
+
+export function preloadVisualPageRenderer() {
+  pdfRuntimePromise ??= Promise.all([
+    import("pdfjs-dist"),
+    import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+  ]).then(([pdfjs, worker]) => ({ pdfjs, workerUrl: worker.default }));
+  return pdfRuntimePromise;
+}
+
 export async function createVisualPageRenderer(file: File) {
   const fingerprint = await fingerprintFile(file);
-  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+  const { pdfjs, workerUrl } = await preloadVisualPageRenderer();
+  pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
   const loading = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
   const pdf = await loading.promise;
   const renderer = {

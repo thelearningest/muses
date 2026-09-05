@@ -86,9 +86,10 @@ test("ships six quests, local progress, 3D inspection, and narration", async () 
 });
 
 test("ships the resumable, quota-protected PDF-to-RPG job flow", async () => {
-  const [shell, client, legacyRoute, advanceRoute, gamePackage] = await Promise.all([
+  const [shell, client, gameLibrary, legacyRoute, advanceRoute, gamePackage] = await Promise.all([
     readFile(new URL("../app/BookRpgApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/book-job-client.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/game-library.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/generate-game/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/book-jobs/[jobId]/advance/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/game-package.ts", import.meta.url), "utf8"),
@@ -96,7 +97,7 @@ test("ships the resumable, quota-protected PDF-to-RPG job flow", async () => {
 
   assert.match(shell, /accept="application\/pdf,.pdf"/);
   assert.match(shell, /I own this book or have permission to use it/);
-  assert.match(shell, /design-book-rpg-library:v1/);
+  assert.match(gameLibrary, /design-book-rpg-library:v1/);
   assert.match(shell, /5 uploads in 24 hours per browser or shared network/);
   assert.match(shell, /Your book is sent to OpenAI for processing/);
   assert.match(client, /create.+upload.+status.+advance.+acknowledge/s);
@@ -105,7 +106,7 @@ test("ships the resumable, quota-protected PDF-to-RPG job flow", async () => {
   assert.match(legacyRoute, /job_api_required/);
   assert.doesNotMatch(legacyRoute, /input_file|OPENAI_API_KEY/);
   assert.match(advanceRoute, /generateGameStage/);
-  assert.match(gamePackage, /minItems: 4/);
-  assert.match(gamePackage, /maxItems: 9/);
+  assert.match(gamePackage, /minItems: 3/);
+  assert.match(gamePackage, /maxItems: 3/);
   assert.match(gamePackage, /sourceAnchors/);
 });

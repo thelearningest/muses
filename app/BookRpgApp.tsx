@@ -19,8 +19,14 @@ import { hasRequiredVisualQuests as hasPlayableVisuals, type GamePackage } from 
 import { loadGameLibrary, saveLibraryGame, removeLibraryGame } from "./game-library";
 import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
 import { overallPipelineProgress, pipelineUnitLabel } from "./pipeline-progress";
-import { createVisualPageRenderer } from "./visual-page-renderer";
 
+type VisualPageRendererModule = typeof import("./visual-page-renderer");
+let visualPageRendererModulePromise: Promise<VisualPageRendererModule> | undefined;
+
+function loadVisualPageRendererModule() {
+  visualPageRendererModulePromise ??= import("./visual-page-renderer");
+  return visualPageRendererModulePromise;
+}
 
 const PIPELINE_STAGES: Array<{ stage: PublicBookJobStage; label: string }> = [
   { stage: "uploading", label: "Uploading your book" },
@@ -177,6 +183,19 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
   const sourceFile = useRef<File | null>(null);
 
   useEffect(() => {
+    const reloadKey = "playable-books:renderer-reload";
+    void loadVisualPageRendererModule().then((module) => module.preloadVisualPageRenderer()).then(() => {
+      window.sessionStorage.removeItem(reloadKey);
+    }).catch(() => {
+      visualPageRendererModulePromise = undefined;
+      if (!window.sessionStorage.getItem(reloadKey)) {
+        window.sessionStorage.setItem(reloadKey, "1");
+        window.location.reload();
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void loadGameLibrary().then((saved) => {
       if (cancelled) return;
@@ -203,11 +222,11 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
       statusRequestActive = true;
       void clientRef.current.status(job).then(applyStatus).catch(() => undefined).finally(() => { statusRequestActive = false; });
     }, 1_500);
-    let rendererPromise: Promise<Awaited<ReturnType<typeof createVisualPageRenderer>>> | undefined;
+    let rendererPromise: Promise<Awaited<ReturnType<VisualPageRendererModule["createVisualPageRenderer"]>>> | undefined;
     const rendererFor = async (fingerprint: string) => {
       if (!sourceFile.current) throw new Error("Select the same PDF below to continue processing it.");
       const file = sourceFile.current;
-      rendererPromise ??= createVisualPageRenderer(file);
+      rendererPromise ??= loadVisualPageRendererModule().then(({ createVisualPageRenderer }) => createVisualPageRenderer(file));
       const renderer = await rendererPromise;
       if (renderer.fingerprint !== fingerprint) { sourceFile.current = null; throw new Error("That’s a different book. Choose the original PDF to continue."); }
       return renderer;
