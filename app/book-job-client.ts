@@ -240,7 +240,17 @@ export async function driveBookJob(input: {
     const stage = status.resumeStage ?? "unknown";
     if (automaticPaidRecoveries.has(stage)) return false;
     automaticPaidRecoveries.add(stage);
-    await input.client.advance(input.job, true);
+    try { await input.client.advance(input.job, true); }
+    catch (error) {
+      if (!(error instanceof BookJobClientError) || error.status !== 409) throw error;
+      // A bounded retry can itself pause. Keep the authoritative stage/error
+      // instead of turning its HTTP status into an unrelated local PDF failure.
+      const latest = await input.client.status(input.job);
+      if (input.signal.aborted) return false;
+      input.onStatus(latest);
+      if (latest.stage === "interrupted") return false;
+      throw error;
+    }
     lastAdvanceAt = now();
     await sleep(0, input.signal);
     return true;

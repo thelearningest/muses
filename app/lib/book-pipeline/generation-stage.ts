@@ -128,6 +128,7 @@ export async function generateGameStage(input: {
     if (await input.repository.commitStage({ jobId: input.job.id, expectedStatus: "generating_game", nextStatus: "verifying_quests", now: input.now, batchCursor: 0 }) === false) return { outcome: "inactive" as const };
     return { outcome: "complete" as const, questCount: game.quests.length };
   } catch (error) {
+    console.warn("book_stage_interrupted", { jobId: input.job.id, stage: "generating_game", operation: "quest_writing", category: error instanceof OpenAiIndeterminateRequestError ? "provider_outcome_unconfirmed" : "generation_validation_or_storage" });
     const manual = error instanceof OpenAiIndeterminateRequestError || (providerCompleted && reserved);
     if (reserved && !manual && input.config.reserveCostUnits && input.repository.reconcileProviderCost) {
       await input.repository.reconcileProviderCost(input.job.id, input.config.reserveCostUnits, 0, input.now);

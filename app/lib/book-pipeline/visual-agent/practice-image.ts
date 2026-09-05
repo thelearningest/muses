@@ -35,11 +35,14 @@ export async function generatePracticeImage(apiKey: string, request: ReturnType<
 }
 
 /** Reuse source crops first. At most THREE image-model calls per book, journaled
- * before sending so refreshes never automatically duplicate a paid request. */
+ * before sending so refreshes never automatically duplicate a paid request.
+ * Yield after each newly generated image. Replaying the same journal sequence
+ * on the next advance preserves slots and restores unpublished image artifacts
+ * without combining several slow image calls and quest writing in one request. */
 export async function prepareQuestImages(input: {
   contracts: QuestEvidenceContract[]; store: VisualStore; job: { id: string; expiresAt: number };
   journal: Pick<PaidCallJournal, "execute">; apiKey: string;
-}): Promise<InputImage[][]> {
+}): Promise<InputImage[][] | null> {
   let generated = 0;
   const images: InputImage[][] = [];
   for (const contract of input.contracts) {
@@ -47,9 +50,14 @@ export async function prepareQuestImages(input: {
     if (source.length) { images.push(source.slice(0, 2)); continue; }
     if (++generated > 3) throw new Error("Only three original practice images are allowed per book");
     const request = practiceImageRequest(contract);
-    const image = await input.journal.execute({ kind: "practice-image-v1", request }, () => generatePracticeImage(input.apiKey, request), () => 1000);
+    let submitted = false;
+    const image = await input.journal.execute({ kind: "practice-image-v1", request }, () => {
+      submitted = true;
+      return generatePracticeImage(input.apiKey, request);
+    }, () => 1000);
     await input.store.putJson(input.job.id, `practice-images/${contract.id}.json`, image, input.job.expiresAt);
     images.push([image]);
+    if (submitted) return null;
   }
   return images;
 }

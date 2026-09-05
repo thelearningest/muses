@@ -11,8 +11,18 @@ describe("local preparation recovery controls", () => {
       preparation: { completedPages: 1, totalPages: 210 }, needsSourceFile: false,
       locallyPaused: true, onSourceFile() {}, onRetry() {}, onCancel() {},
     }));
-    expect(html).toContain("Resume preparation");
+    expect(html).toContain("Resume book reading");
     expect(html).toContain("Preparing pages paused");
     expect(html).not.toContain("disabled");
+  });
+  it("names quest creation when a model request pauses after reading", () => {
+    const html = renderToStaticMarkup(createElement(JobProgress, {
+      job: { jobId: "fixture", capabilityToken: "fixture", filename: "book.pdf", stage: "generating_game" },
+      status: { jobId: "fixture", stage: "interrupted", resumeStage: "generating_game", recoverable: true },
+      preparation: null, needsSourceFile: false,
+      onSourceFile() {}, onRetry() {}, onCancel() {},
+    }));
+    expect(html).toContain("Resume quest creation");
+    expect(html).not.toContain("Keep this tab visible");
   });
 });

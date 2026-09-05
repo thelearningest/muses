@@ -164,7 +164,7 @@ export function JobProgress({ job, status, preparation, needsSourceFile, onSourc
         </label>
       )}
       <div className="job-actions">
-        {paused && <button className="button button-primary" type="button" disabled={needsSourceFile} onClick={onRetry}>{locallyPaused ? "Resume preparation" : "Try again"} <span aria-hidden="true">→</span></button>}
+        {paused && <button className="button button-primary" type="button" disabled={needsSourceFile} onClick={onRetry}>Resume {step === 2 ? "quest creation" : step === 3 ? "answer checks" : "book reading"} <span aria-hidden="true">→</span></button>}
         <button className="text-button text-button-light" type="button" onClick={onCancel}>Cancel upload</button>
       </div>
     </section>
@@ -221,7 +221,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     const applyStatus = (status: BookJobStatusResponse) => {
       if (controller.signal.aborted) return;
       setJobStatus(status);
-      if (status.stage !== "interrupted") setError("");
+      setError(status.stage === "interrupted" ? status.error?.message ?? "This step was interrupted. Your completed work is saved." : "");
       saveResumableJob(window.localStorage, { ...job, stage: status.stage });
     };
     const statusPoll = window.setInterval(() => {

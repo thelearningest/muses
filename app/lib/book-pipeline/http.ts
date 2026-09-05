@@ -393,7 +393,9 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
           error: job.terminalErrorCategory
             ? { code: job.terminalErrorCategory, message: job.terminalErrorCategory === "extraction_quality_insufficient"
               ? `The book could not be read reliably${extraction ? ` at PDF page ${extraction.cursor + 1}` : ""}, even after higher-resolution retries. No incomplete book was turned into a game.`
-              : job.terminalErrorCategory === "manual_retry_required" ? "The previous model request may have been charged. Confirm a retry to continue this job." : "This job could not continue." }
+              : job.terminalErrorCategory === "manual_retry_required" ? job.resumeStage === "generating_game"
+                ? "Quest creation was interrupted. Your completed book reading is saved. Resume to retry the unfinished model request; it may already have been charged."
+                : "The previous model request may have been charged. Confirm a retry to continue this job." : "This job could not continue." }
             : null,
           ...(game ? { game } : {}),
         });

@@ -247,6 +247,19 @@ describe("resumable book job client", () => {
     expect(advance).toHaveBeenCalledWith(job, true);
   });
 
+  it("keeps the server's quest-creation error when the bounded retry also returns 409", async () => {
+    const paused = { jobId: job.jobId, stage: "interrupted" as const, resumeStage: "generating_game" as const,
+      recoverable: true, error: { code: "manual_retry_required", message: "Quest creation was interrupted. Your book reading is saved." } };
+    const onStatus = vi.fn();
+    const advance = vi.fn().mockRejectedValue(new BookJobClientError("request_failed", "The request could not be completed.", 409));
+    const status = vi.fn().mockResolvedValue(paused);
+    expect(await driveBookJob({ job, client: { status, advance, acknowledge: vi.fn() }, signal: new AbortController().signal,
+      onStatus, saveGame: vi.fn(), clear: vi.fn(), sleep: vi.fn() })).toBe("paused");
+    expect(advance).toHaveBeenCalledOnce();
+    expect(status).toHaveBeenCalledTimes(2);
+    expect(onStatus).toHaveBeenLastCalledWith(paused);
+  });
+
   it("cancels the current job and always clears resumable local state", async () => {
     const storage = memoryStorage();
     saveResumableJob(storage, job);

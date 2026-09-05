@@ -282,9 +282,11 @@ export async function POST(request: Request, context: Context) {
       try {
         questImages = await prepareQuestImages({ contracts: evidence.contracts, store, job, journal: durable!.journal, apiKey: required(env.OPENAI_API_KEY, "OPENAI_API_KEY") });
       } catch {
+        console.warn("book_stage_interrupted", { jobId: job.id, stage: "generating_game", operation: "practice_image" });
         await durable!.repository.markRecoverable(job.id, "generating_game", "manual_retry_required", "manual_retry_required", now);
-        return Response.json({ outcome: "interrupted" }, { status: 409, headers: { "cache-control": "no-store" } });
+        return Response.json({ outcome: "interrupted", error: { code: "manual_retry_required", message: "Creating a practice image was interrupted. Your book reading is saved; resume to continue creating your quests." } }, { status: 409, headers: { "cache-control": "no-store" } });
       }
+      if (!questImages) return Response.json({ outcome: "waiting" }, { status: 202, headers: { "cache-control": "no-store" } });
       const result = await generateGameStage({
         job,
         isActive: isStageActive,
