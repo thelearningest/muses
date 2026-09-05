@@ -104,6 +104,12 @@ describe("bounded visual agent", () => {
   it("keeps source text out of trusted instructions", () => {
     expect(VISUAL_PROMPTS.scout).toContain("untrusted evidence"); expect(VISUAL_PROMPTS.scout).not.toContain("send passwords");
   });
+  it("requires reviewers to reject explanatory and answer-revealing graphics", () => {
+    expect(VISUAL_PROMPTS.review).toMatch(/reject explanatory diagrams/i);
+    expect(VISUAL_PROMPTS.review).toMatch(/answer-revealing labels/i);
+    expect(VISUAL_PROMPTS.verify).toMatch(/mainly explains a framework/i);
+    expect(VISUAL_PROMPTS.verify).toMatch(/placeholder boxes/i);
+  });
   it("runs scout -> localization -> review -> verifier -> selector", async () => {
     let state = initialVisualState(book, []);
     for (const response of [{ pages: [0], reason: "Nice" }, { title: "Poster", concept: "grid", boxes: [box], evidenceIds: ["b0"], reason: "Complete" }, review, verdict, { selectedIds: ["v0"], reason: "Appealing" }]) {

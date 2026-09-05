@@ -1,5 +1,5 @@
 import { it, expect, vi } from "vitest";
-import { EXTRACTION_WAVE_SIZE, initialBatchState, validateBatchOutput, advanceBatchExtraction, pendingBatchExtractionRequests } from "../../app/lib/book-pipeline/extraction/batch";
+import { BATCH_INSTRUCTIONS, BATCH_PROMPT_VERSION, EXTRACTION_WAVE_SIZE, initialBatchState, validateBatchOutput, advanceBatchExtraction, pendingBatchExtractionRequests } from "../../app/lib/book-pipeline/extraction/batch";
 import { BookArtifactStore } from "../../app/lib/book-pipeline/artifact-store";
 import { BookJobRepository } from "../../app/lib/book-pipeline/job-repository";
 import { BookOperationRepository } from "../../app/lib/book-pipeline/operation-repository";
@@ -28,6 +28,17 @@ it("rejects page counts outside the manifest boundary", () => {
   const limits = { maxMicros: 15_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 };
   expect(() => initialBatchState("f", 0, limits)).toThrow(/manifest/i);
   expect(() => initialBatchState("f", 301, limits)).toThrow(/manifest/i);
+});
+
+it("versions and validates the visual semantic contract", () => {
+  expect(initialBatchState("f", 1, { maxMicros: 15_000_000, inputUsdPerMillion: 4, outputUsdPerMillion: 20 }))
+    .toMatchObject({ version: 5, promptVersion: BATCH_PROMPT_VERSION });
+  expect(BATCH_INSTRUCTIONS).toContain("applied_example");
+  expect(BATCH_INSTRUCTIONS).toContain("meta_explanation");
+  const visual = { description: "Executed editorial layout", box: { x: 0, y: 0, width: 1, height: 1 }, appeal: 0.9, semanticClass: "applied_example" };
+  expect(validateBatchOutput({ bookTitle: null, pages: [{ ...page(0), visual }] }, [0]).pages[0].visual).toEqual(visual);
+  expect(() => validateBatchOutput({ bookTitle: null, pages: [{ ...page(0), visual: { ...visual, semanticClass: "unknown" } }] }, [0])).toThrow();
+  expect(() => validateBatchOutput({ bookTitle: null, pages: [{ ...page(0), visual: { description: visual.description, box: visual.box, appeal: visual.appeal } }] }, [0])).toThrow();
 });
 
 it("omits malformed individual pages without failing the book", () => {

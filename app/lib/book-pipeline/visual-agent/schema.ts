@@ -3,6 +3,8 @@ import { z } from "zod";
 const text = z.string().max(1200);
 const ids = z.array(z.string().max(160)).max(24);
 export const boxSchema = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1), width: z.number().gt(0).max(1), height: z.number().gt(0).max(1) }).strict();
+export const visualSemanticClassSchema = z.enum(["applied_example", "meta_explanation", "decorative"]);
+export type VisualSemanticClass = z.infer<typeof visualSemanticClassSchema>;
 export type CropBox = z.infer<typeof boxSchema>;
 export function validBox(box: CropBox): boolean {
   return boxSchema.safeParse(box).success && box.x + box.width <= 1 && box.y + box.height <= 1;
@@ -34,12 +36,16 @@ export type Candidate = {
   id: string; pageIndex: number; title: string; concept: string; boxes: CropBox[];
   evidenceIds: string[]; revision: number; review?: Review; verdict?: Verdict;
   cropHashes?: string[];
+  // Batch-extracted candidates are admitted only when this is applied_example.
+  // It remains optional so historical and independently reviewed visual states
+  // keep their original versioned shape.
+  semanticClass?: VisualSemanticClass;
   // One holistic appeal estimate from the page-reading model, not five reviews.
   extractionAppeal?: number;
 };
 export type VisualUsage = { calls: number; inputTokens: number; outputTokens: number; reservedMicros: number; estimatedMicros: number };
 export type VisualState = {
-  schemaVersion: 1; promptVersion: "visual-v1" | "visual-reference-v1"; sourceFingerprint: string;
+  schemaVersion: 1; promptVersion: "visual-v1" | "visual-reference-v1" | "visual-reference-v2"; sourceFingerprint: string;
   phase: "scout" | "crop" | "review" | "verify" | "select" | "references" | "done";
   step: number; pages: number[]; queue: number[]; candidates: Candidate[];
   selectedIds: string[]; usage: VisualUsage; stopReason: string | null;

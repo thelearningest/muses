@@ -2,23 +2,28 @@ import type { CanonicalBook } from "../contracts";
 import type { BookJobRepository } from "../job-repository";
 import { renderRequests } from "./agent";
 import { rankedCandidates } from "./policy";
-import { validBox, type Candidate, type CropBox, type VisualAsset, type VisualState } from "./schema";
+import { validBox, type Candidate, type CropBox, type VisualAsset, type VisualSemanticClass, type VisualState } from "./schema";
 import { VISUAL_STATE_PATH, type VisualStore } from "./stage";
 
-type ExtractedVisual = { pageIndex: number; concept: string; evidenceIds: string[]; description: string; box: CropBox; appeal: number };
+type ExtractedVisual = { pageIndex: number; concept: string; evidenceIds: string[]; description: string; box: CropBox; appeal: number; semanticClass?: VisualSemanticClass | string };
 const limitation = "Selected from full-page extraction, not independently crop-reviewed. Do not score tiny labels, counts, attribution or crop-dependent claims without checking the actual supplied image and source text. The quiz reviewer must inspect this crop before it can be used.";
 
-export function batchReferenceState(book: CanonicalBook, seeds: ExtractedVisual[]): VisualState {
-  const candidates: Candidate[] = seeds.filter((seed) => Number.isFinite(seed.appeal) && seed.appeal >= 0.625 && seed.appeal <= 1 && validBox(seed.box)
+function referenceState(book: CanonicalBook, seeds: ExtractedVisual[], semanticFilter: boolean): VisualState {
+  const candidates: Candidate[] = seeds.filter((seed) => (!semanticFilter || seed.semanticClass === "applied_example")
+    && Number.isFinite(seed.appeal) && seed.appeal >= 0.625 && seed.appeal <= 1 && validBox(seed.box)
     && seed.evidenceIds.length > 0 && seed.evidenceIds.every((id) => book.blocks.some((block) => block.id === id && block.pageIndex === seed.pageIndex)))
     .map((seed) => ({ id: `batch-v${seed.pageIndex}`, pageIndex: seed.pageIndex, title: seed.description, concept: seed.concept, boxes: [seed.box],
-      evidenceIds: seed.evidenceIds, revision: 0, extractionAppeal: seed.appeal,
+      evidenceIds: seed.evidenceIds, revision: 0, ...(semanticFilter ? { semanticClass: "applied_example" as const } : {}), extractionAppeal: seed.appeal,
       review: { action: "verify", scores: [0, 0, 0, 0, 0], boxes: [], visibleFacts: [], limitations: [limitation], quiz: null, reason: "No separate crop review; holistic extractor appeal estimate only." },
       verdict: { disposition: "reference_only", evidenceIds: seed.evidenceIds, claims: [], reason: limitation } }));
   const selected = rankedCandidates(candidates).slice(0, 3);
-  return { schemaVersion: 1, promptVersion: "visual-reference-v1", sourceFingerprint: book.source.fingerprint, phase: "references", step: 0,
+  return { schemaVersion: 1, promptVersion: semanticFilter ? "visual-reference-v2" : "visual-reference-v1", sourceFingerprint: book.source.fingerprint, phase: "references", step: 0,
     pages: selected.map((candidate) => candidate.pageIndex), queue: [], candidates: selected, selectedIds: [],
     usage: { calls: 0, inputTokens: 0, outputTokens: 0, reservedMicros: 0, estimatedMicros: 0 }, stopReason: null };
+}
+
+export function batchReferenceState(book: CanonicalBook, seeds: ExtractedVisual[]): VisualState {
+  return referenceState(book, seeds, true);
 }
 
 /** Reuse images the extractor already inspected. The current quest's independent
@@ -30,13 +35,14 @@ export async function prepareBatchReferences(input: {
   const { job, store } = input;
   let checkpoint = await store.getJsonVersion<VisualState>(job.id, VISUAL_STATE_PATH);
   if (!checkpoint) {
-    const extracted = await store.getJson<{ candidates: ExtractedVisual[] }>(job.id, "extraction-visuals.json");
+    const extracted = await store.getJson<{ version?: number; candidates: ExtractedVisual[] }>(job.id, "extraction-visuals.json");
     // Older jobs retain the old visual workflow and exact replay history.
     if (!extracted) return null;
-    await store.putJsonIfAbsent(job.id, VISUAL_STATE_PATH, batchReferenceState(input.book, extracted.candidates), job.expiresAt);
+    await store.putJsonIfAbsent(job.id, VISUAL_STATE_PATH,
+      referenceState(input.book, extracted.candidates, extracted.version === 2), job.expiresAt);
     checkpoint = await store.getJsonVersion<VisualState>(job.id, VISUAL_STATE_PATH);
   }
-  if (!checkpoint || checkpoint.value.promptVersion !== "visual-reference-v1") return null;
+  if (!checkpoint || !["visual-reference-v1", "visual-reference-v2"].includes(checkpoint.value.promptVersion)) return null;
   const state = checkpoint.value;
   if (state.sourceFingerprint !== input.book.source.fingerprint) throw new Error("Visual source mismatch");
   const requests = renderRequests(state);
