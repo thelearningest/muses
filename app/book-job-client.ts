@@ -3,6 +3,7 @@ import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
 import type { RenderRequest } from "./lib/book-pipeline/visual-agent/schema";
 import type { ExtractionPageRequest } from "./lib/book-pipeline/extraction/stage";
 import { mapConcurrent } from "./lib/book-pipeline/parallel";
+import { BrowserOperationError, browserOperation, waitUntilVisible } from "./browser-operations";
 
 export type BookJobAdvanceResult = { outcome: string; completedBatches?: number; totalBatches?: number; verifiedQuests?: number; totalQuests?: number; renderRequests?: RenderRequest[]; sourceFingerprint?: string; request?: ExtractionPageRequest; requests?: ExtractionPageRequest[]; maxPages?: number };
 
@@ -14,8 +15,6 @@ export const OCR_RECHECK_MS = 15_000;
 // recheck safe even when the original response never reaches the browser.
 export const ADVANCE_TIMEOUT_MS = 90_000;
 export const PREPARATION_WAVE_SIZE = 32;
-// Leave enough room for rendering plus all three 30-second upload attempts.
-export const PAGE_PREPARATION_TIMEOUT_MS = 120_000;
 
 export type ResumableBookJob = {
   jobId: string;
@@ -35,18 +34,6 @@ export type BookJobStatusResponse = {
 };
 
 export type BookPreparationProgress = { completedPages: number; totalPages: number };
-
-async function withTimeout<T>(promise: Promise<T>, milliseconds: number, code: string, message: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new BookJobClientError(code, message, 408)), milliseconds); }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
 
 async function withNetworkDeadline<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -108,16 +95,20 @@ export class BookJobClient {
     return { authorization: `Bearer ${job.capabilityToken}`, ...(mutation ? { "content-type": "application/json" } : {}) };
   }
 
-  private async uploadJson(job: ResumableBookJob, path: string, body: unknown): Promise<void> {
+  private async uploadJson(job: ResumableBookJob, path: string, body: unknown, signal = new AbortController().signal, phase = "Uploading a prepared image"): Promise<void> {
     let lastError: unknown;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        await parseResponse(await this.fetcher(`${this.origin}${path}`, {
-          method: "PUT", headers: this.headers(job, true), body: JSON.stringify(body), signal: AbortSignal.timeout(30_000),
-        }));
+        signal.throwIfAborted();
+        await browserOperation({ signal, phase, milliseconds: 30_000,
+          run: async (attemptSignal) => parseResponse(await this.fetcher(`${this.origin}${path}`, {
+            method: "PUT", headers: this.headers(job, true), body: JSON.stringify(body), signal: attemptSignal,
+          })),
+        });
         return;
       } catch (error) {
-        const retryable = error instanceof TypeError || (error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name));
+        if (signal.aborted) throw error;
+        const retryable = error instanceof TypeError || error instanceof BrowserOperationError || (error instanceof BookJobClientError && [429, 502, 503, 504].includes(error.status)) || (error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name));
         if (!retryable || attempt === 2) throw error;
         lastError = error;
         await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
@@ -150,23 +141,26 @@ export class BookJobClient {
     }), ADVANCE_TIMEOUT_MS));
   }
 
-  async uploadVisualAsset(job: ResumableBookJob, asset: unknown): Promise<void> {
-    await this.uploadJson(job, `/api/book-jobs/${encodeURIComponent(job.jobId)}/visual-assets`, asset);
+  async uploadVisualAsset(job: ResumableBookJob, asset: unknown, signal?: AbortSignal): Promise<void> {
+    await this.uploadJson(job, `/api/book-jobs/${encodeURIComponent(job.jobId)}/visual-assets`, asset, signal);
   }
 
-  async initializeExtraction(job: ResumableBookJob, manifest: { sourceFingerprint: string; pageCount: number }): Promise<void> {
-    await parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, { method: "POST", headers: this.headers(job, true), body: JSON.stringify(manifest) }));
+  async initializeExtraction(job: ResumableBookJob, manifest: { sourceFingerprint: string; pageCount: number }, signal = new AbortController().signal): Promise<void> {
+    await browserOperation({ signal, phase: "Saving the PDF page count", milliseconds: 30_000,
+      run: async (attemptSignal) => parseResponse(await this.fetcher(`${this.origin}/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, { method: "POST", headers: this.headers(job, true), body: JSON.stringify(manifest), signal: attemptSignal })),
+    });
   }
 
-  async uploadExtractionAsset(job: ResumableBookJob, asset: unknown): Promise<void> {
-    await this.uploadJson(job, `/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, asset);
+  async uploadExtractionAsset(job: ResumableBookJob, asset: unknown, signal?: AbortSignal): Promise<void> {
+    const page = asset && typeof asset === "object" && "pageIndex" in asset && typeof asset.pageIndex === "number" ? asset.pageIndex + 1 : undefined;
+    await this.uploadJson(job, `/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, asset, signal, page ? `Uploading PDF page ${page}` : "Uploading a prepared page");
   }
 
-  async skipExtractionAsset(job: ResumableBookJob, request: ExtractionPageRequest, sourceFingerprint: string): Promise<void> {
+  async skipExtractionAsset(job: ResumableBookJob, request: ExtractionPageRequest, sourceFingerprint: string, signal?: AbortSignal): Promise<void> {
     await this.uploadJson(job, `/api/book-jobs/${encodeURIComponent(job.jobId)}/extraction`, {
       sourceFingerprint, pageIndex: request.pageIndex, revision: request.revision,
       nativeText: "", orderReliable: false, images: [], skipped: true,
-    });
+    }, signal);
   }
 
   async acknowledge(job: ResumableBookJob): Promise<void> {
@@ -231,6 +225,7 @@ export async function driveBookJob(input: {
   let connectionRecoveries = 0;
   const automaticPaidRecoveries = new Set<string>();
   const prepared = new Set<string>();
+  const preparationFailures = new Map<string, unknown>();
   let preparationTotal = 0;
   const automaticallyRecover = async (status: BookJobStatusResponse) => {
     if (status.error?.code !== "manual_retry_required") return false;
@@ -313,7 +308,9 @@ export async function driveBookJob(input: {
           await input.prepareExtractionPage(requests[0], advanced.sourceFingerprint);
         } else if (!preparation) {
           const key = (request: ExtractionPageRequest) => `${request.pageIndex}:${request.revision}`;
-          const remaining = requests.filter((request) => !prepared.has(key(request)));
+          const missing = requests.filter((request) => !prepared.has(key(request)));
+          const remaining = missing.filter((request) => !preparationFailures.has(key(request)));
+          if (!remaining.length && missing.length) throw preparationFailures.get(key(missing[0]));
           preparationTotal = Math.max(preparationTotal, prepared.size + remaining.length);
           input.onPreparationProgress?.({ completedPages: prepared.size, totalPages: preparationTotal });
           // Persist progress in bounded waves. This lets the server confirm each
@@ -321,12 +318,15 @@ export async function driveBookJob(input: {
           const wave = remaining.slice(0, PREPARATION_WAVE_SIZE);
           if (wave.length) preparation = mapConcurrent(wave, 8, async (request) => {
             if (input.signal.aborted) return;
-            await withTimeout(
-              input.prepareExtractionPage!(request, advanced.sourceFingerprint!),
-              PAGE_PREPARATION_TIMEOUT_MS,
-              "page_preparation_timeout",
-              `PDF page ${request.pageIndex + 1} took too long to prepare. Try again to resume from the saved pages.`,
-            );
+            await waitUntilVisible(input.signal);
+            // The renderer and uploader own separate, cancellable phase deadlines.
+            // A queued render must not spend its timeout waiting behind other pages.
+            try { await input.prepareExtractionPage!(request, advanced.sourceFingerprint!); }
+            catch (error) {
+              if (!input.signal.aborted) preparationFailures.set(key(request), error);
+              return;
+            }
+            if (input.signal.aborted) return;
             prepared.add(key(request));
             input.onPreparationProgress?.({ completedPages: prepared.size, totalPages: preparationTotal });
           }).then(() => { preparation = undefined; }, (error) => { preparationError = error; preparation = undefined; });

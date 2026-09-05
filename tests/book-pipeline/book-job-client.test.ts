@@ -6,7 +6,6 @@ import {
   BookJobClientError,
   driveBookJob,
   loadResumableJob,
-  PAGE_PREPARATION_TIMEOUT_MS,
   persistValidGameThenAcknowledge,
   RESUMABLE_JOB_KEY,
   saveResumableJob,
@@ -32,11 +31,43 @@ function memoryStorage() {
 }
 
 describe("resumable book job client", () => {
-  it("allows page preparation to outlast the complete upload retry budget", () => {
-    expect(PAGE_PREPARATION_TIMEOUT_MS).toBe(120_000);
-    expect(PAGE_PREPARATION_TIMEOUT_MS).toBeGreaterThan(3 * 30_000);
+  it("finishes healthy waves before exposing a failed page for resume", async () => {
+    const requests = Array.from({ length: 40 }, (_, pageIndex) => ({ pageIndex, revision: 0, parts: 1 as const, allowNative: true, compact: true }));
+    const uploaded = new Set<number>();
+    const progress: number[] = [];
+    const prepare = vi.fn(async (request: typeof requests[number]) => {
+      if (request.pageIndex === 0) throw new Error("Rendering PDF page 1 timed out");
+      uploaded.add(request.pageIndex);
+    });
+    await expect(driveBookJob({ job, signal: new AbortController().signal,
+      client: {
+        status: async () => ({ jobId: job.jobId, stage: "reading_source", recoverable: false }),
+        advance: async () => ({ outcome: "awaiting_extraction_assets", requests: requests.filter((request) => !uploaded.has(request.pageIndex)), sourceFingerprint: "source" }),
+        acknowledge: vi.fn(),
+      }, prepareExtractionPage: prepare, onPreparationProgress: (value) => progress.push(value.completedPages),
+      onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(), sleep: vi.fn(async () => undefined),
+    })).rejects.toThrow("Rendering PDF page 1 timed out");
+    expect(uploaded.size).toBe(39);
+    expect(prepare).toHaveBeenCalledTimes(40);
+    expect(progress.at(-1)).toBe(39);
   });
 
+  it("cancels a stalled upload without retrying or accepting its late response", async () => {
+    const controller = new AbortController();
+    let finish!: (response: Response) => void;
+    let uploadSignal!: AbortSignal;
+    const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      uploadSignal = init!.signal!;
+      return new Promise<Response>((resolve) => { finish = resolve; });
+    });
+    const pending = new BookJobClient(fetcher as typeof fetch).uploadExtractionAsset(job, { pageIndex: 0 }, controller.signal);
+    const rejection = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    controller.abort();
+    await rejection;
+    expect(uploadSignal.aborted).toBe(true);
+    finish(Response.json({ accepted: true }));
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
   it("rechecks status after a dropped advance response and does not retry an uncertain paid call", async () => {
     const status = vi.fn().mockResolvedValueOnce({ jobId: job.jobId, stage: "reading_source", recoverable: false })
       .mockResolvedValueOnce({ jobId: job.jobId, stage: "interrupted", recoverable: true });
@@ -70,14 +101,13 @@ describe("resumable book job client", () => {
     const controller = new AbortController();
     const onPreparationProgress = vi.fn();
     const requests = [0, 1, 2].map((pageIndex) => ({ pageIndex, revision: 0, parts: 1 as const, allowNative: true, compact: true }));
-    const prepareExtractionPage = vi.fn(async (request: (typeof requests)[number]) => {
-      if (request.pageIndex === 2) controller.abort();
-    });
+    const prepareExtractionPage = vi.fn(async () => undefined);
+    let advances = 0;
     await driveBookJob({
       job,
       client: {
         status: vi.fn(async () => ({ jobId: job.jobId, stage: "reading_source" as const, recoverable: false })),
-        advance: vi.fn(async () => ({ outcome: "awaiting_extraction_assets", requests, sourceFingerprint: "source" })),
+        advance: vi.fn(async () => { if (++advances === 2) controller.abort(); return { outcome: "awaiting_extraction_assets", requests, sourceFingerprint: "source" }; }),
         acknowledge: vi.fn(),
       },
       signal: controller.signal, onStatus: vi.fn(), saveGame: vi.fn(), clear: vi.fn(),

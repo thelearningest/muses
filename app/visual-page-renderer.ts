@@ -2,6 +2,7 @@ import { fingerprintFile } from "./book-job-client";
 import type { RenderRequest } from "./lib/book-pipeline/visual-agent/schema";
 import type { ExtractionPageRequest } from "./lib/book-pipeline/extraction/stage";
 import { extractionRenderRequests, nativeTextUsable } from "./lib/book-pipeline/extraction/policy";
+import { browserOperation } from "./browser-operations";
 
 type PdfJs = typeof import("pdfjs-dist");
 let pdfRuntimePromise: Promise<{ pdfjs: PdfJs; workerUrl: string }> | undefined;
@@ -10,29 +11,59 @@ export function preloadVisualPageRenderer() {
   pdfRuntimePromise ??= Promise.all([
     import("pdfjs-dist"),
     import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
-  ]).then(([pdfjs, worker]) => ({ pdfjs, workerUrl: worker.default }));
+  ]).then(([pdfjs, worker]) => ({ pdfjs, workerUrl: worker.default })).catch((error) => {
+    pdfRuntimePromise = undefined;
+    throw error;
+  });
   return pdfRuntimePromise;
 }
 
-export async function createVisualPageRenderer(file: File) {
-  const fingerprint = await fingerprintFile(file);
-  const { pdfjs, workerUrl } = await preloadVisualPageRenderer();
+export async function createVisualPageRenderer(file: File, signal = new AbortController().signal, onPhase?: (phase: string) => void) {
+  const operation = <T>(phase: string, run: (signal: AbortSignal) => Promise<T>) => {
+    onPhase?.(phase);
+    return browserOperation({ signal, phase, milliseconds: 60_000, visibleOnly: true, run });
+  };
+  const fingerprint = await operation("Matching your PDF", () => fingerprintFile(file));
+  const { pdfjs, workerUrl } = await operation("Loading the PDF renderer", () => preloadVisualPageRenderer());
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-  const loading = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
-  const pdf = await loading.promise;
+  const data = await operation("Loading PDF bytes", async () => new Uint8Array(await file.arrayBuffer()));
+  const worker = new pdfjs.PDFWorker();
+  const loading = pdfjs.getDocument({ data, worker });
+  let destroyed: Promise<void> | undefined;
+  const destroy = () => {
+    signal.removeEventListener("abort", cancelled);
+    if (destroyed) return destroyed;
+    // Terminate our own worker even if its normal shutdown handshake is stuck.
+    const shutdown = loading.destroy();
+    worker.destroy();
+    destroyed = browserOperation({ signal: new AbortController().signal, phase: "Closing PDF renderer", milliseconds: 2_000, run: () => shutdown }).catch(() => undefined);
+    return destroyed;
+  };
+  const cancelled = () => { void destroy().catch(() => undefined); };
+  signal.addEventListener("abort", cancelled, { once: true });
+  if (signal.aborted) cancelled();
+  const pdf = await operation("Opening your PDF", () => loading.promise).catch(async (error) => {
+    cancelled();
+    throw error;
+  });
+  const optionalContent = await operation("Inspecting PDF layers", () => pdf.getOptionalContentConfig()).catch(async (error) => {
+    await destroy();
+    throw error;
+  });
+  const hasOptionalLayers = !optionalContent[Symbol.iterator]().next().done;
   const renderer = {
     fingerprint,
     pageCount: pdf.numPages,
-    destroy: () => loading.destroy(),
+    destroy,
     async prepareExtraction(request: ExtractionPageRequest, sourceFingerprint: string, options?: { retry?: 0 | 1 | 2 | 3 }) {
       if (fingerprint !== sourceFingerprint) throw new Error("Select the same PDF used for this job.");
       const requests = extractionRenderRequests(request.pageIndex, request.revision);
       if (request.parts !== requests.length || request.allowNative !== (request.revision === 0) || request.pageIndex >= pdf.numPages) throw new Error("Invalid page preparation request");
       let nativeText = "", orderReliable = false;
       if (request.allowNative) {
-        const page = await pdf.getPage(request.pageIndex + 1);
+        const page = await operation(`Opening PDF page ${request.pageIndex + 1}`, () => pdf.getPage(request.pageIndex + 1));
         try {
-          const content = await page.getTextContent();
+          const content = await operation(`Reading text on PDF page ${request.pageIndex + 1}`, () => page.getTextContent());
           const items = content.items.filter((item) => "str" in item);
           // Only simple, unrotated single-column reading order qualifies.
           // Ambiguous layouts fall back to vision without guessing or dropping text.
@@ -69,7 +100,7 @@ export async function createVisualPageRenderer(file: File) {
     },
     async render(request: RenderRequest, sourceFingerprint: string, limits?: { edge: number; bytes: number; format?: "jpeg" | "png" }) {
       if (fingerprint !== sourceFingerprint) throw new Error("Select the same PDF used for this job.");
-      const page = await pdf.getPage(request.pageIndex + 1);
+      const page = await operation(`Opening PDF page ${request.pageIndex + 1}`, () => pdf.getPage(request.pageIndex + 1));
       const viewport = page.getViewport({ scale: 1 });
       const edge = limits?.edge ?? (request.kind === "thumbnail" ? 512 : request.box ? 4096 : 2048);
       const maxBytes = limits?.bytes ?? 768 * 1024;
@@ -80,7 +111,21 @@ export async function createVisualPageRenderer(file: File) {
       if (!context) throw new Error("Canvas unavailable");
       const output = document.createElement("canvas");
       try {
-        await page.render({ canvas, canvasContext: context, viewport: scaled }).promise;
+        // Extraction is offscreen work. Display intent depends on animation
+        // frames, which can be throttled even in a visible embedded browser.
+        // Static intent is equivalent only when neither annotation visibility
+        // nor optional-content print settings can change the page's appearance.
+        const annotations = hasOptionalLayers ? undefined : await operation(`Inspecting PDF page ${request.pageIndex + 1}`, () => page.getAnnotations({ intent: "any" }));
+        const intent = annotations?.length === 0 ? "print" : "display";
+        await operation(`Rendering PDF page ${request.pageIndex + 1}`, async (renderSignal) => {
+          const task = page.render({ canvas, canvasContext: context, viewport: scaled, intent });
+          const cancel = () => task.cancel();
+          renderSignal.addEventListener("abort", cancel, { once: true });
+          try { await task.promise; }
+          finally { renderSignal.removeEventListener("abort", cancel); }
+        });
+        signal.throwIfAborted();
+        onPhase?.(`Encoding PDF page ${request.pageIndex + 1}`);
         const box = request.box ?? { x: 0, y: 0, width: 1, height: 1 };
         const width = box.width * canvas.width, height = box.height * canvas.height;
         let scale = Math.min(1, 2048 / Math.max(width, height));

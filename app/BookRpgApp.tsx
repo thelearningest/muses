@@ -19,6 +19,8 @@ import { hasRequiredVisualQuests as hasPlayableVisuals, type GamePackage } from 
 import { loadGameLibrary, saveLibraryGame, removeLibraryGame } from "./game-library";
 import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
 import { overallPipelineProgress, pipelineUnitLabel } from "./pipeline-progress";
+import { BrowserOperationError, browserOperation } from "./browser-operations";
+import { createRecoverableRenderer } from "./recoverable-renderer";
 
 type VisualPageRendererModule = typeof import("./visual-page-renderer");
 let visualPageRendererModulePromise: Promise<VisualPageRendererModule> | undefined;
@@ -103,10 +105,11 @@ function Turnstile({ onToken, siteKey }: { onToken(token: string): void; siteKey
   return <div className="turnstile-field" ref={container} aria-label="Human verification" />;
 }
 
-function JobProgress({ job, status, preparation, needsSourceFile, onSourceFile, onRetry, onCancel }: {
+export function JobProgress({ job, status, preparation, needsSourceFile, onSourceFile, onRetry, onCancel, locallyPaused = false, hidden = false, phase = "" }: {
   job: ResumableBookJob; status: BookJobStatusResponse | null; needsSourceFile: boolean;
   preparation: BookPreparationProgress | null;
   onSourceFile(file: File): void; onRetry(): void; onCancel(): void;
+  locallyPaused?: boolean; hidden?: boolean; phase?: string;
 }) {
   const stage = status?.stage ?? job.stage;
   const interrupted = stage === "interrupted";
@@ -128,7 +131,8 @@ function JobProgress({ job, status, preparation, needsSourceFile, onSourceFile, 
   const activity = preparing
     ? preparation.completedPages < preparation.totalPages ? "Preparing pages" : "Reading prepared pages"
     : PIPELINE_STAGES[current]?.label ?? "Preparing your book";
-  const progressLabel = interrupted ? `${activity} paused` : activity;
+  const paused = interrupted || locallyPaused;
+  const progressLabel = paused ? `${activity} paused` : preparing && hidden ? "Preparation paused while tab is hidden" : activity;
   return (
     <section className="job-progress" aria-live="polite" aria-labelledby="job-progress-title">
       <div className="job-progress-heading">
@@ -149,8 +153,9 @@ function JobProgress({ job, status, preparation, needsSourceFile, onSourceFile, 
         </div>
         <progress aria-label={`${progressLabel}, ${percent}% overall`} max={100} value={percent} />
       </div>
-      <p className="generation-note">Keep this tab open while we prepare your game. This can take a few minutes.</p>
-      {interrupted && <p className="job-interruption">Your completed steps are saved. Try again to continue from here.</p>}
+      <p className="generation-note">Keep this tab visible while we prepare your pages. If you switch tabs, preparation pauses and resumes when you return.</p>
+      {preparing && !paused && !hidden && phase && <p className="generation-note">{phase}</p>}
+      {paused && <p className="job-interruption">Your completed steps are saved. Resume to continue from here.</p>}
       {needsSourceFile && (
         <label className="file-field resume-file">
           <span>Select the same PDF to resume</span>
@@ -159,7 +164,7 @@ function JobProgress({ job, status, preparation, needsSourceFile, onSourceFile, 
         </label>
       )}
       <div className="job-actions">
-        {interrupted && <button className="button button-primary" type="button" disabled={needsSourceFile} onClick={onRetry}>Try again <span aria-hidden="true">→</span></button>}
+        {paused && <button className="button button-primary" type="button" disabled={needsSourceFile} onClick={onRetry}>{locallyPaused ? "Resume preparation" : "Try again"} <span aria-hidden="true">→</span></button>}
         <button className="text-button text-button-light" type="button" onClick={onCancel}>Cancel upload</button>
       </div>
     </section>
@@ -178,9 +183,21 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
   const [error, setError] = useState("");
+  const [locallyPaused, setLocallyPaused] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const [preparationPhase, setPreparationPhase] = useState("");
+  const [needsSourceFile, setNeedsSourceFile] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const clientRef = useRef(new BookJobClient());
   const sourceFile = useRef<File | null>(null);
+  const activeDriver = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const changed = () => setHidden(document.hidden);
+    changed();
+    document.addEventListener("visibilitychange", changed);
+    return () => document.removeEventListener("visibilitychange", changed);
+  }, []);
 
   useEffect(() => {
     const reloadKey = "playable-books:renderer-reload";
@@ -210,6 +227,8 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     const job = activeJob;
     if (!hydrated || !job || job.stage === "uploading") return;
     const controller = new AbortController();
+    activeDriver.current = controller;
+    const reportPhase = (phase: string) => { if (!controller.signal.aborted) setPreparationPhase(phase); };
     let statusRequestActive = false;
     const applyStatus = (status: BookJobStatusResponse) => {
       if (controller.signal.aborted) return;
@@ -222,36 +241,39 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
       statusRequestActive = true;
       void clientRef.current.status(job).then(applyStatus).catch(() => undefined).finally(() => { statusRequestActive = false; });
     }, 1_500);
-    let rendererPromise: Promise<Awaited<ReturnType<VisualPageRendererModule["createVisualPageRenderer"]>>> | undefined;
-    const rendererFor = async (fingerprint: string) => {
-      if (!sourceFile.current) throw new Error("Select the same PDF below to continue processing it.");
-      const file = sourceFile.current;
-      rendererPromise ??= loadVisualPageRendererModule().then(({ createVisualPageRenderer }) => createVisualPageRenderer(file));
-      const renderer = await rendererPromise;
-      if (renderer.fingerprint !== fingerprint) { sourceFile.current = null; throw new Error("That’s a different book. Choose the original PDF to continue."); }
-      return renderer;
-    };
+    const rendererSession = createRecoverableRenderer({
+      signal: controller.signal,
+      open: async () => {
+        if (!sourceFile.current) throw new Error("Select the same PDF below to continue processing it.");
+        const { createVisualPageRenderer } = await browserOperation({ signal: controller.signal, phase: "Loading the PDF renderer", milliseconds: 60_000, visibleOnly: true, run: () => loadVisualPageRendererModule() });
+        return createVisualPageRenderer(sourceFile.current, controller.signal, reportPhase);
+      },
+      onRestart: () => reportPhase("Restarting the PDF renderer; completed pages are saved"),
+    });
+    const renderWithRecovery = <T,>(fingerprint: string, run: (renderer: Awaited<ReturnType<VisualPageRendererModule["createVisualPageRenderer"]>>) => Promise<T>) => rendererSession.run(async (renderer) => {
+      if (renderer.fingerprint !== fingerprint) { sourceFile.current = null; setNeedsSourceFile(true); throw new Error("That’s a different book. Choose the original PDF to continue."); }
+      return run(renderer);
+    });
     void driveBookJob({
       job,
       client: clientRef.current,
       signal: controller.signal,
       prepareExtractionManifest: async (fingerprint, maxPages) => {
-        const renderer = await rendererFor(fingerprint);
-        if (renderer.pageCount > maxPages) throw new Error(`This PDF exceeds the ${maxPages}-page limit.`);
-        if (!controller.signal.aborted) await clientRef.current.initializeExtraction(job, { sourceFingerprint: fingerprint, pageCount: renderer.pageCount });
+        const pageCount = await renderWithRecovery(fingerprint, async (renderer) => renderer.pageCount);
+        if (pageCount > maxPages) throw new Error(`This PDF exceeds the ${maxPages}-page limit.`);
+        if (!controller.signal.aborted) await clientRef.current.initializeExtraction(job, { sourceFingerprint: fingerprint, pageCount }, controller.signal);
       },
       prepareExtractionPage: async (request, fingerprint) => {
-        const renderer = await rendererFor(fingerprint);
         let lastRejected: BookJobClientError | undefined;
         for (const retry of [0, 1, 2, 3] as const) {
           if (controller.signal.aborted) return;
-          const asset = await renderer.prepareExtraction(request, fingerprint, retry ? { retry } : undefined);
+          const asset = await renderWithRecovery(fingerprint, (renderer) => renderer.prepareExtraction(request, fingerprint, retry ? { retry } : undefined));
           if (controller.signal.aborted) return;
           try {
-            await clientRef.current.uploadExtractionAsset(job, asset);
+            await clientRef.current.uploadExtractionAsset(job, asset, controller.signal);
             return;
           } catch (error) {
-            if (!(error instanceof BookJobClientError) || ![400, 413].includes(error.status) || controller.signal.aborted) throw error;
+            if (!(error instanceof BookJobClientError) || !["invalid_extraction_asset", "batch_image_too_large", "request_too_large"].includes(error.code) || controller.signal.aborted) throw error;
             lastRejected = error;
           }
         }
@@ -259,19 +281,18 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
         // Recording the skip prevents a single rejected image from stranding
         // every other page in the book.
         if (request.compact && !controller.signal.aborted) {
-          await clientRef.current.skipExtractionAsset(job, request, fingerprint);
+          await clientRef.current.skipExtractionAsset(job, request, fingerprint, controller.signal);
           return;
         }
         throw lastRejected ?? new Error(`PDF page ${request.pageIndex + 1} could not be prepared.`);
       },
-      onPreparationProgress: setPreparationProgress,
+      onPreparationProgress: (progress) => { if (!controller.signal.aborted) setPreparationProgress(progress); },
       renderAssets: async (requests, fingerprint) => {
-        const renderer = await rendererFor(fingerprint);
         for (const request of requests) {
           if (controller.signal.aborted) return;
-          const asset = await renderer.render(request, fingerprint);
+          const asset = await renderWithRecovery(fingerprint, (renderer) => renderer.render(request, fingerprint));
           if (controller.signal.aborted) return;
-          await clientRef.current.uploadVisualAsset(job, asset);
+          await clientRef.current.uploadVisualAsset(job, asset, controller.signal);
         }
       },
       onStatus: applyStatus,
@@ -289,9 +310,18 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
         setJobStatus(null);
         setPreparationProgress(null);
       },
-    }).catch((jobError) => { if (!controller.signal.aborted) setError(messageFor(jobError)); })
-      .finally(async () => { window.clearInterval(statusPoll); const renderer = await rendererPromise?.catch(() => undefined); await renderer?.destroy(); });
-    return () => { window.clearInterval(statusPoll); controller.abort(); };
+    }).catch((jobError) => {
+      if (controller.signal.aborted) return;
+      controller.abort();
+      setLocallyPaused(true);
+      setError(messageFor(jobError));
+      if (jobError instanceof BrowserOperationError) console.warn("PDF preparation paused", { build: "visibility-recovery-v1", phase: jobError.phase, hidden: document.hidden });
+    })
+      .finally(async () => { window.clearInterval(statusPoll); await rendererSession.destroy(); }).catch(() => undefined);
+    return () => {
+      window.clearInterval(statusPoll); controller.abort();
+      if (activeDriver.current === controller) activeDriver.current = null;
+    };
   }, [hydrated, activeJob, driveVersion]);
 
   const removeGame = async (id: string) => {
@@ -304,6 +334,8 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     const file = fileRef.current?.files?.[0];
     if (!file) { setError("Choose a PDF book to continue."); return; }
     sourceFile.current = file;
+    setNeedsSourceFile(false);
+    setLocallyPaused(false);
     if (!turnstileToken) { setError("Complete the verification challenge first."); return; }
     setIsStarting(true);
     setError("");
@@ -329,6 +361,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
 
   const cancelJob = async () => {
     if (!activeJob) return;
+    activeDriver.current?.abort();
     try {
       await cancelAndClear({
         job: activeJob,
@@ -342,6 +375,12 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
   const retryJob = async () => {
     if (!activeJob) return;
     setError("");
+    if (locallyPaused) {
+      // Re-preparing saved pages never confirms a paid model retry.
+      setLocallyPaused(false);
+      setDriveVersion((value) => value + 1);
+      return;
+    }
     try {
       if (jobStatus?.error?.code === "manual_retry_required" && !window.confirm("The previous model request may already have been charged. Retry it once within the remaining budget?")) return;
       await clientRef.current.advance(activeJob, true);
@@ -362,8 +401,8 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
       <div className="library-grid">
         <section className="upload-panel" aria-labelledby="upload-title">
           <h2 id="upload-title">{activeJob ? "Your game is on its way" : "Start with a PDF"}</h2>
-          {activeJob ? <JobProgress job={activeJob} status={jobStatus} preparation={preparationProgress} needsSourceFile={!sourceFile.current}
-            onSourceFile={(file) => { sourceFile.current = file; setError(""); setDriveVersion((value) => value + 1); }}
+          {activeJob ? <JobProgress job={activeJob} status={jobStatus} preparation={preparationProgress} needsSourceFile={needsSourceFile} locallyPaused={locallyPaused} hidden={hidden} phase={preparationPhase}
+            onSourceFile={(file) => { sourceFile.current = file; setNeedsSourceFile(false); setLocallyPaused(false); setError(""); setDriveVersion((value) => value + 1); }}
             onRetry={() => void retryJob()} onCancel={() => void cancelJob()} /> : (
             <>
               <form onSubmit={createGame}>
