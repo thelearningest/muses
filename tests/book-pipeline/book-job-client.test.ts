@@ -6,6 +6,7 @@ import {
   BookJobClientError,
   driveBookJob,
   loadResumableJob,
+  PAGE_PREPARATION_TIMEOUT_MS,
   persistValidGameThenAcknowledge,
   RESUMABLE_JOB_KEY,
   saveResumableJob,
@@ -31,6 +32,11 @@ function memoryStorage() {
 }
 
 describe("resumable book job client", () => {
+  it("allows page preparation to outlast the complete upload retry budget", () => {
+    expect(PAGE_PREPARATION_TIMEOUT_MS).toBe(120_000);
+    expect(PAGE_PREPARATION_TIMEOUT_MS).toBeGreaterThan(3 * 30_000);
+  });
+
   it("rechecks status after a dropped advance response and does not retry an uncertain paid call", async () => {
     const status = vi.fn().mockResolvedValueOnce({ jobId: job.jobId, stage: "reading_source", recoverable: false })
       .mockResolvedValueOnce({ jobId: job.jobId, stage: "interrupted", recoverable: true });

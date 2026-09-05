@@ -14,7 +14,8 @@ export const OCR_RECHECK_MS = 15_000;
 // recheck safe even when the original response never reaches the browser.
 export const ADVANCE_TIMEOUT_MS = 90_000;
 export const PREPARATION_WAVE_SIZE = 32;
-export const PAGE_PREPARATION_TIMEOUT_MS = 60_000;
+// Leave enough room for rendering plus all three 30-second upload attempts.
+export const PAGE_PREPARATION_TIMEOUT_MS = 120_000;
 
 export type ResumableBookJob = {
   jobId: string;
