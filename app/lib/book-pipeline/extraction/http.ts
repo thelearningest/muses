@@ -86,7 +86,14 @@ export function createExtractionApi(deps: {
         if (value.images.length !== (native ? 0 : expected.length)) throw new Rejected("incomplete_extraction_asset", 400);
         const images: ExtractionAsset["images"] = [];
         for (let i = 0; i < value.images.length; i++) {
-          const image = await (state.version === 4 ? validateBatchVisualAsset : validateVisualAsset)(value.images[i], expected[i], state.fingerprint);
+          let image: Awaited<ReturnType<typeof validateVisualAsset>>;
+          try {
+            image = await (state.version === 4 ? validateBatchVisualAsset : validateVisualAsset)(value.images[i], expected[i], state.fingerprint);
+          } catch {
+            // Let the browser distinguish a render-compatibility problem from a
+            // malformed request and retry this page once as a conservative PNG.
+            throw new Rejected("invalid_extraction_asset", 400);
+          }
           if (state.version === 4 && (image.imageUrl.length - image.imageUrl.indexOf(",") - 1) * 3 / 4 > 384 * 1024) throw new Rejected("batch_image_too_large", 413);
           images.push({ imageUrl: image.imageUrl, width: image.width, height: image.height, hash: image.hash, detail: "high", label: `${state.version === 4 ? `pageIndex=${value.pageIndex}, ` : ""}PDF page ${value.pageIndex + 1}, full-page region ${JSON.stringify(expected[i].box ?? { x: 0, y: 0, width: 1, height: 1 })}` });
         }

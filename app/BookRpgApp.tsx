@@ -224,7 +224,14 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
         const renderer = await rendererFor(fingerprint);
         if (controller.signal.aborted) return;
         const asset = await renderer.prepareExtraction(request, fingerprint);
-        if (!controller.signal.aborted) await clientRef.current.uploadExtractionAsset(job, asset);
+        if (controller.signal.aborted) return;
+        try {
+          await clientRef.current.uploadExtractionAsset(job, asset);
+        } catch (error) {
+          if (!(error instanceof BookJobClientError) || error.code !== "invalid_extraction_asset" || controller.signal.aborted) throw error;
+          const fallback = await renderer.prepareExtraction(request, fingerprint, { fallbackPng: true });
+          if (!controller.signal.aborted) await clientRef.current.uploadExtractionAsset(job, fallback);
+        }
       },
       onPreparationProgress: setPreparationProgress,
       renderAssets: async (requests, fingerprint) => {

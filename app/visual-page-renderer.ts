@@ -14,7 +14,7 @@ export async function createVisualPageRenderer(file: File) {
     fingerprint,
     pageCount: pdf.numPages,
     destroy: () => loading.destroy(),
-    async prepareExtraction(request: ExtractionPageRequest, sourceFingerprint: string) {
+    async prepareExtraction(request: ExtractionPageRequest, sourceFingerprint: string, options?: { fallbackPng?: boolean }) {
       if (fingerprint !== sourceFingerprint) throw new Error("Select the same PDF used for this job.");
       const requests = extractionRenderRequests(request.pageIndex, request.revision);
       if (request.parts !== requests.length || request.allowNative !== (request.revision === 0) || request.pageIndex >= pdf.numPages) throw new Error("Invalid page preparation request");
@@ -44,11 +44,14 @@ export async function createVisualPageRenderer(file: File) {
       }
       const images = [];
       if (!nativeTextUsable(nativeText, orderReliable)) {
-        for (const part of requests) images.push(await renderer.render(part, sourceFingerprint, request.compact ? { edge: 1400, bytes: 192 * 1024 } : undefined));
+        const limits = options?.fallbackPng
+          ? { edge: 1000, bytes: 384 * 1024, format: "png" as const }
+          : request.compact ? { edge: 1400, bytes: 192 * 1024, format: "jpeg" as const } : undefined;
+        for (const part of requests) images.push(await renderer.render(part, sourceFingerprint, limits));
       }
       return { sourceFingerprint, pageIndex: request.pageIndex, revision: request.revision, nativeText, orderReliable, images };
     },
-    async render(request: RenderRequest, sourceFingerprint: string, limits?: { edge: number; bytes: number }) {
+    async render(request: RenderRequest, sourceFingerprint: string, limits?: { edge: number; bytes: number; format?: "jpeg" | "png" }) {
       if (fingerprint !== sourceFingerprint) throw new Error("Select the same PDF used for this job.");
       const page = await pdf.getPage(request.pageIndex + 1);
       const viewport = page.getViewport({ scale: 1 });
@@ -71,7 +74,7 @@ export async function createVisualPageRenderer(file: File) {
         for (let attempt = 0; attempt < 5; attempt++) {
           output.width = Math.max(1, Math.floor(width * scale)); output.height = Math.max(1, Math.floor(height * scale));
           output.getContext("2d")!.drawImage(canvas, box.x * canvas.width, box.y * canvas.height, width, height, 0, 0, output.width, output.height);
-          imageUrl = limits ? output.toDataURL("image/jpeg", 0.82) : output.toDataURL("image/png");
+          imageUrl = limits?.format === "jpeg" ? output.toDataURL("image/jpeg", 0.82) : output.toDataURL("image/png");
           if ((imageUrl.length - imageUrl.indexOf(",") - 1) * 3 / 4 <= maxBytes) break;
           scale *= 0.75;
         }

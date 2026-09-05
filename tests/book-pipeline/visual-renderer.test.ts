@@ -33,6 +33,16 @@ describe("bounded PDF.js rendering", () => {
     expect(tiles.images.every((image) => Math.max(image.width, image.height) <= 2048)).toBe(true);
     await renderer.destroy();
   });
+  it("falls back from a compact JPEG to a conservative PNG", async () => {
+    mock.getPage.mockResolvedValue({ getTextContent: vi.fn(async () => ({ items: [] })), rotate: 0, view: [0,0,600,800], getViewport: ({ scale }: { scale: number }) => ({ width: 600 * scale, height: 800 * scale, rotation: 0 }), render: () => ({ promise: Promise.resolve() }), cleanup: mock.cleanup });
+    const encodings: string[] = [];
+    vi.stubGlobal("document", { createElement: () => ({ width: 0, height: 0, getContext: () => ({ drawImage: mock.draw }), toDataURL: (type: string) => { encodings.push(type); return `data:${type};base64,AA==`; } }) });
+    const renderer = await createVisualPageRenderer(new File(["fixture"], "test.pdf"));
+    await renderer.prepareExtraction({ pageIndex: 0, revision: 0, parts: 1, allowNative: true, compact: true }, "source");
+    await renderer.prepareExtraction({ pageIndex: 0, revision: 0, parts: 1, allowNative: true, compact: true }, "source", { fallbackPng: true });
+    expect(encodings).toEqual(["image/jpeg", "image/png"]);
+    await renderer.destroy();
+  });
   it("uses PDF indices, rotated viewport coordinates, bounded previews, and releases canvases", async () => {
     mock.getPage.mockResolvedValue({ getViewport: ({ scale }: { scale: number }) => ({ width: 800 * scale, height: 600 * scale, rotation: 90 }), render: () => ({ promise: Promise.resolve() }), cleanup: mock.cleanup });
     const canvases: Array<{ width: number; height: number }> = [];

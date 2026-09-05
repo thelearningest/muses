@@ -86,7 +86,7 @@ describe("resumable book job client", () => {
     let active = 0, peak = 0;
     const progress: number[] = [];
     const advance = vi.fn(async () => {
-      if (advance.mock.calls.length > 1) controller.abort();
+      if (advance.mock.calls.length > Math.ceil(requests.length / 32)) controller.abort();
       return { outcome: "awaiting_extraction_assets", requests, sourceFingerprint: "source" };
     });
     await driveBookJob({
@@ -98,6 +98,7 @@ describe("resumable book job client", () => {
       sleep: vi.fn(async () => undefined),
     });
     expect(peak).toBe(8);
+    expect(advance).toHaveBeenCalledTimes(Math.ceil(requests.length / 32) + 1);
     expect(progress[0]).toBe(0);
     expect(progress.at(-1)).toBe(299);
     expect(progress.every((value, index) => index === 0 || value >= progress[index - 1])).toBe(true);

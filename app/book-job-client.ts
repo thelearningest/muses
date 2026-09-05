@@ -12,6 +12,8 @@ export const OCR_RECHECK_MS = 15_000;
 // Longer than the provider deadline plus persistence overhead. The UI polls the
 // durable status independently, so users still see confirmed batch progress.
 export const ADVANCE_TIMEOUT_MS = 270_000;
+export const PREPARATION_WAVE_SIZE = 32;
+export const PAGE_PREPARATION_TIMEOUT_MS = 60_000;
 
 export type ResumableBookJob = {
   jobId: string;
@@ -31,6 +33,18 @@ export type BookJobStatusResponse = {
 };
 
 export type BookPreparationProgress = { completedPages: number; totalPages: number };
+
+async function withTimeout<T>(promise: Promise<T>, milliseconds: number, code: string, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new BookJobClientError(code, message, 408)), milliseconds); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export class BookJobClientError extends Error {
   constructor(readonly code: string, message: string, readonly status: number) {
@@ -281,17 +295,22 @@ export async function driveBookJob(input: {
           const remaining = requests.filter((request) => !prepared.has(key(request)));
           preparationTotal = Math.max(preparationTotal, prepared.size + remaining.length);
           input.onPreparationProgress?.({ completedPages: prepared.size, totalPages: preparationTotal });
-          // Keep enough uploads in flight to hide hosted R2/database latency.
-          // Each compact page is bounded to 192 KiB; eight remain modest for a browser.
-          if (remaining.length) preparation = mapConcurrent(remaining, 8, async (request) => {
+          // Persist progress in bounded waves. This lets the server confirm each
+          // group instead of making one slow/bad page hold hundreds of uploads.
+          const wave = remaining.slice(0, PREPARATION_WAVE_SIZE);
+          if (wave.length) preparation = mapConcurrent(wave, 8, async (request) => {
             if (input.signal.aborted) return;
-            await input.prepareExtractionPage!(request, advanced.sourceFingerprint!);
+            await withTimeout(
+              input.prepareExtractionPage!(request, advanced.sourceFingerprint!),
+              PAGE_PREPARATION_TIMEOUT_MS,
+              "page_preparation_timeout",
+              `PDF page ${request.pageIndex + 1} took too long to prepare. Try again to resume from the saved pages.`,
+            );
             prepared.add(key(request));
             input.onPreparationProgress?.({ completedPages: prepared.size, totalPages: preparationTotal });
           }).then(() => { preparation = undefined; }, (error) => { preparationError = error; preparation = undefined; });
-          // The batch stage deliberately starts one model wave only after all
-          // requested packets exist. Wait here instead of repeatedly scanning
-          // hundreds of R2 keys while the browser is still uploading them.
+          // Re-enter the durable stage after each wave so confirmed uploads are
+          // resumable and the UI never waits on a single all-pages barrier.
           await preparation;
           if (preparationError) throw preparationError;
         }
