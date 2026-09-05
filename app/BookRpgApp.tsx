@@ -19,6 +19,7 @@ import { hasRequiredVisualQuests as hasPlayableVisuals, type GamePackage } from 
 import { loadGameLibrary, saveLibraryGame, removeLibraryGame } from "./game-library";
 import type { PublicBookJobStage } from "./lib/book-pipeline/contracts";
 import { overallPipelineProgress, pipelineUnitLabel } from "./pipeline-progress";
+import { createVisualPageRenderer } from "./visual-page-renderer";
 
 
 const PIPELINE_STAGES: Array<{ stage: PublicBookJobStage; label: string }> = [
@@ -202,11 +203,11 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
       statusRequestActive = true;
       void clientRef.current.status(job).then(applyStatus).catch(() => undefined).finally(() => { statusRequestActive = false; });
     }, 1_500);
-    let rendererPromise: Promise<Awaited<ReturnType<typeof import("./visual-page-renderer").createVisualPageRenderer>>> | undefined;
+    let rendererPromise: Promise<Awaited<ReturnType<typeof createVisualPageRenderer>>> | undefined;
     const rendererFor = async (fingerprint: string) => {
       if (!sourceFile.current) throw new Error("Select the same PDF below to continue processing it.");
       const file = sourceFile.current;
-      rendererPromise ??= import("./visual-page-renderer").then(({ createVisualPageRenderer }) => createVisualPageRenderer(file));
+      rendererPromise ??= createVisualPageRenderer(file);
       const renderer = await rendererPromise;
       if (renderer.fingerprint !== fingerprint) { sourceFile.current = null; throw new Error("That’s a different book. Choose the original PDF to continue."); }
       return renderer;
