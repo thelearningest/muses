@@ -98,8 +98,6 @@ function buildExhibit(scene: THREE.Scene) {
   box(scene, 2.8, 1.22, 1.4, 0, .86, 2.25, stone);
   box(scene, 3.6, .17, 1.82, 0, 1.54, 2.25, darkMetal);
   box(scene, 3.42, .025, 1.65, 0, 1.637, 2.25, charcoal);
-  const plate = label("LIGHT ARCHIVE / 12", 2, .19, 0, 1.16, 2.956, "#bfa96b", "#252820");
-  plate.name = "archive-label";
   box(scene, 2.45, .04, .04, 0, .66, 2.96, darkMetal);
   for (let i = 0; i < 9; i++) box(scene, .055, .22, .025, -.48 + i * .12, .92, 2.96, charcoal);
 

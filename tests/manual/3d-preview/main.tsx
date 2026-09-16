@@ -46,7 +46,7 @@ function Prototype() {
       <span className="prototype-tag">3D study / 01</span>
     </header>
     <section className="intro" aria-labelledby="title">
-      <div><p className="eyebrow">Light archive · Object 12</p><h1 id="title">The Constellation<br />Switchboard</h1></div>
+      <div><h1 id="title">The Constellation<br />Switchboard</h1></div>
       <p className="intro-description">Four lamps. Four identical switches.<br />The keeper needs one light. Where would you start?</p>
     </section>
     <section className="exhibit" id="exhibit" aria-label="Interactive switchboard study">
@@ -59,7 +59,6 @@ function Prototype() {
             <div className="fallback-lamps">{lamps.map((on, i) => <span key={i} className={repaired && on ? "is-on" : ""}>{repaired ? `${POSITIONS[i]} · ${on ? "ON" : "OFF"}` : "?"}</span>)}</div>
             <p>{available ? "The same lamp arrangement, viewed from above." : "3D is unavailable in this browser."} The controls below let you compare both designs.</p>
           </div>}
-          <span className="exhibit-label" aria-hidden="true">{repaired ? "02 / Revised arrangement" : "01 / As found"}</span>
         </div>
         <div className="view-controls" aria-label="Camera views">
           <span className="control-label">Look closer</span>

@@ -15,5 +15,14 @@ export default defineConfig({
     watch: { useFsEvents: false, usePolling: true },
     fs: { allow: [fileURLToPath(new URL("../../..", import.meta.url))] },
   },
-  build: { outDir: "../../../outputs/3d-preview", emptyOutDir: true },
+  build: {
+    outDir: "../../../outputs/3d-preview",
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        switchboard: fileURLToPath(new URL("index.html", import.meta.url)),
+        batch: fileURLToPath(new URL("batch.html", import.meta.url)),
+      },
+    },
+  },
 });

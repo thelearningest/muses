@@ -667,7 +667,6 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
         )}
       </div>
       <figcaption id="artifact-caption">
-            <span>{quest.gallery}</span>
         <span>{repaired ? "Repaired state" : revealed ? "Inspection state" : "Arrival state"}</span>
       </figcaption>
     </figure>
@@ -1218,7 +1217,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
               </p>
             </div>
             <div className={`intro-artifact${generated ? " intro-artifact-generated" : ""}`}>
-              <span className="artifact-index">{generated ? quest.gallery : "COLLECTION 01 / NORTH GATE"}</span>
+              {generated && <span className="artifact-index">{quest.gallery}</span>}
               {generated && quest.visual ? (
                 <Suspense fallback={<div className="generated-artifact-loading">Loading the scene…</div>}>
                   <GeneratedArtifact visual={quest.visual} revealed={false} repaired={false} />
@@ -1390,7 +1389,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
 
         <div className="game-workspace">
           <aside className="quest-brief">
-            <span className="eyebrow">{quest.gallery}</span>
+            {game && <span className="eyebrow">{quest.gallery}</span>}
             <h1>{quest.title}</h1>
             <p className="quest-story">{quest.story.replace(/^Original exercise:\s*/i, "")}</p>
             <div className="objective-block">

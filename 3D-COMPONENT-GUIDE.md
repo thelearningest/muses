@@ -37,3 +37,11 @@ The viewer offers a 2D lamp diagram and controls when WebGL cannot start or lose
 On 2026-09-16, the production build, existing rendered-HTML tests, three switchboard state tests, production-source TypeScript checks, and scoped ESLint checks passed. ESLint retained the existing intro-image warning. Computer use covered the path from Quest 1 to Quest 2, an incorrect repair, the correct repair, the 75 XP award, keyboard and model clicks, 2D/3D state preservation, desktop and narrow layout bounds, and resuming the completed quest after reload. Actual WebGL failure was not forced.
 
 The repository-wide TypeScript check still reports errors in existing book-pipeline tests. The connected Sites account cannot access the project in `.openai/hosting.json`; local integration does not confirm a hosted deployment.
+
+## Quests 3–6 review batch
+
+Open [the local four-scene preview](http://127.0.0.1:3016/batch.html) after starting the Vite config in `tests/manual/3d-preview/`. The locker, foundry, console, and kiosk are separate interactive models with Original/Repaired comparisons. They are ready for a combined visual review before quest integration.
+
+`artifact-scene.tsx` handles the models, raycast targets, camera presets, rendering on changes, and GPU cleanup. `experiments.ts` handles interruption recovery, piece placement, archive recovery, and route history. `batch.tsx` supplies the review tabs, accessible controls, and 2D alternatives. The preview does not read or write application progress.
+
+The batch passed eight focused state tests, scoped type/lint checks, its standalone build, and desktop computer-use checks on 2026-09-16. Phone-view checks were omitted as requested. Decorative collection and object-number labels were removed from the demo and switchboard model. The four production quest replacements and any hosted deployment remain separate from this preview.
