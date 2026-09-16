@@ -1216,6 +1216,9 @@ button:disabled {
   min-height: 0;
 }
 
+.artifact-gallery-switchboard { min-height: 760px; }
+.artifact-switchboard:not(.artifact-generated) { align-items: stretch; min-height: 650px; }
+
 .artifact-visual {
   align-items: center;
   background: var(--white);

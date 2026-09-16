@@ -17,7 +17,7 @@ Open [the local prototype](http://127.0.0.1:3016).
 
 All controls below the model work with a keyboard. If WebGL is unavailable or loses its context, a labeled two-dimensional lamp layout replaces the model and the switch controls remain usable.
 
-This is the first prototype checkpoint for the City of Misfit Things demo. It uses the existing Three.js dependency, reads no saved games, and calls no application APIs. It is not part of the production game and has not been published. The other four non-gate objects still need their 3D models after this interaction direction is reviewed.
+This standalone study reads no saved games and calls no application APIs. Its scene is now shared with Quest 2 in the production application code. The study has manual Original/Repaired controls; the game unlocks the repaired design only after a correct repair choice. The other four non-gate objects still need their 3D models.
 
 Build this prototype separately with:
 
@@ -37,4 +37,4 @@ Checked on 2026-09-16 with computer use at 1280×720 and 390×844:
 - Checked focus visibility, horizontal overflow, and control/panel separation. The browser log was clear after the final fixes.
 - Passed the standalone build, scoped ESLint, and strict TypeScript checks for the prototype files.
 
-Actual WebGL startup failure and context loss were not forced. The full repository TypeScript check remains blocked by errors outside this prototype, including missing `pdf-lib`, `pdfjs-dist`, and `eventsource-parser` modules in the local installation.
+Actual WebGL startup failure and context loss were not forced. Dependencies were restored during integration; the full repository TypeScript check still reports errors in existing book-pipeline tests. See `3D-COMPONENT-GUIDE.md` for integration checks and hosting status.

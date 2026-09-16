@@ -6,6 +6,9 @@ import type { Choice, GamePackage, Quest } from "./game-package";
 const GateInspector3D = lazy(() =>
   import("./GateInspector3D").then((module) => ({ default: module.GateInspector3D })),
 );
+const SwitchboardInspector3D = lazy(() =>
+  import("./SwitchboardInspector3D").then((module) => ({ default: module.SwitchboardInspector3D })),
+);
 const GeneratedArtifact = lazy(() =>
   import("./GeneratedArtifact").then((module) => ({ default: module.GeneratedArtifact })),
 );
@@ -565,31 +568,9 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
         )}
 
         {quest.artifact === "switchboard" && (
-          <div className="switchboard-scene" aria-label="Four lamps and four controls">
-            <div className="lamp-grid">
-              {[0, 1, 2, 3].map((lamp) => (
-                <span className="lamp" key={lamp} aria-hidden="true" />
-              ))}
-            </div>
-            <div className="mapping-lines" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-            <div className="control-grid">
-              {[0, 1, 2, 3].map((control) => (
-                <span className="control" key={control}>
-                  {String(control + 1).padStart(2, "0")}
-                </span>
-              ))}
-            </div>
-            {revealed && !repaired && (
-              <span className="artifact-callout switchboard-callout">
-                Which switch controls which lamp?
-              </span>
-            )}
-          </div>
+          <Suspense fallback={<p className="generated-artifact-loading">Loading the switchboard…</p>}>
+            <SwitchboardInspector3D revealed={revealed} repaired={repaired} />
+          </Suspense>
         )}
 
         {quest.artifact === "memory" && (
@@ -1427,7 +1408,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
             </div>
           </aside>
 
-          <section className="artifact-gallery" aria-label={quest.title + " artifact"}>
+          <section className={`artifact-gallery${quest.artifact === "switchboard" && !quest.visual ? " artifact-gallery-switchboard" : ""}`} aria-label={quest.title + " artifact"}>
             <ArtifactDisplay quest={quest} phase={progress.phase} />
           </section>
 
