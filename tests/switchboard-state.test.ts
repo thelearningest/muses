@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initialSwitchboardState, switchboardReducer } from "../app/switchboard/state";
+import { finishSwitchboardConsequence, restoreGameProgress } from "../app/Game";
 
 describe("switchboard experiment", () => {
   it("matches each repaired control to its lamp and allows it to turn off again", () => {
@@ -30,5 +31,59 @@ describe("switchboard experiment", () => {
     expect(repaired.lamps).toEqual([false, false, false, false]);
     expect(repaired.lastSwitch).toBeNull();
     expect(original.lamps.some(Boolean)).toBe(true);
+  });
+});
+
+describe("bounded switchboard consequences", () => {
+  const quests = [{ id: "false-handles" }, { id: "constellation-controls" }, { id: "vanishing-instructions" }];
+  const maxXp = 450;
+
+  it.each(["spatial-map", "manual-labels"])("restores the %s outcome and joins the shared reward once", (switchboardChoice) => {
+    const saved = JSON.stringify({ currentQuest: 1, phase: "consequence", switchboardChoice, xp: 70, completed: ["false-handles"], principles: ["false-handles"] });
+    const restored = restoreGameProgress(JSON.parse(saved), quests, maxXp, true);
+    expect(restored.phase).toBe("consequence");
+    expect(restored.switchboardChoice).toBe(switchboardChoice);
+    expect(restored.xp).toBe(70);
+
+    const completed = finishSwitchboardConsequence(restored, maxXp);
+    expect(completed.phase).toBe("reward");
+    expect(completed.currentQuest).toBe(1);
+    expect(completed.xp).toBe(145);
+    expect(completed.completed).toEqual(["false-handles", "constellation-controls"]);
+    expect(completed.principles).toEqual(completed.completed);
+    expect(completed.switchboardChoice).toBe(switchboardChoice);
+    expect(finishSwitchboardConsequence(completed, maxXp)).toBe(completed);
+
+    const replay = finishSwitchboardConsequence({ ...completed, phase: "consequence" }, maxXp);
+    expect(replay.xp).toBe(145);
+    expect(replay.completed).toEqual(completed.completed);
+    expect(restoreGameProgress(JSON.parse(JSON.stringify(completed)), quests, maxXp, true)).toEqual(completed);
+  });
+
+  it("recovers missing or unknown choices to the repair question", () => {
+    for (const switchboardChoice of [undefined, "color-only", "toString", 1]) {
+      const progress = restoreGameProgress({ currentQuest: 1, phase: "consequence", switchboardChoice }, quests, maxXp, true);
+      expect(progress.phase).toBe("repair");
+      expect(progress.switchboardChoice).toBeUndefined();
+      expect(finishSwitchboardConsequence(progress, maxXp)).toBe(progress);
+    }
+  });
+
+  it("does not enable the demo branch in generated games or another quest", () => {
+    const saved = { currentQuest: 1, phase: "consequence", switchboardChoice: "manual-labels" };
+    const generated = restoreGameProgress(saved, quests, maxXp, false);
+    expect(generated.phase).toBe("repair");
+    expect(generated.switchboardChoice).toBeUndefined();
+    const otherQuest = restoreGameProgress({ ...saved, currentQuest: 2 }, quests, maxXp, true);
+    expect(otherQuest.phase).toBe("repair");
+    expect(finishSwitchboardConsequence({ ...otherQuest, phase: "consequence" }, maxXp)).toEqual({ ...otherQuest, phase: "consequence" });
+  });
+
+  it("keeps old saves usable and a fresh game free of the prior choice", () => {
+    const oldSave = restoreGameProgress({ currentQuest: 1, phase: "repair", xp: 70, completed: ["false-handles"] }, quests, maxXp, true);
+    expect(oldSave.phase).toBe("repair");
+    expect(oldSave.xp).toBe(70);
+    expect(oldSave.switchboardChoice).toBeUndefined();
+    expect(restoreGameProgress(null, quests, maxXp, true)).toEqual({ version: 1, currentQuest: 0, phase: "inspect", xp: 0, completed: [], principles: [] });
   });
 });

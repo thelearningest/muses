@@ -13,7 +13,7 @@ const GeneratedArtifact = lazy(() =>
   import("./GeneratedArtifact").then((module) => ({ default: module.GeneratedArtifact })),
 );
 
-type Phase = "inspect" | "diagnose" | "repair" | "reward" | "complete";
+type Phase = "inspect" | "diagnose" | "repair" | "consequence" | "reward" | "complete";
 type FeedbackTone = "neutral" | "good" | "bad";
 type AudioPreference = "on" | "off";
 type NarrationState = "idle" | "speaking" | "paused" | "unavailable";
@@ -24,7 +24,27 @@ type Progress = {
   xp: number;
   completed: string[];
   principles: string[];
+  switchboardChoice?: "spatial-map" | "manual-labels";
 };
+
+const SWITCHBOARD_OUTCOMES = {
+  "spatial-map": {
+    title: "The keeper finds the right lamp",
+    story: "The keeper reaches for the switch in the same position as the lamp. The lamp lights up, and the control confirms it is on. No lookup chart is needed.",
+    action: "Keep this design",
+    journal: "You matched the controls to the lamps. The keeper could choose a lamp and see the result immediately.",
+  },
+  "manual-labels": {
+    title: "The chart helps, until it is missing",
+    story: "The keeper checks the A–D chart and finds the right switch. On the next shift, the chart has been moved. The letters alone no longer tell the keeper which lamp to choose.",
+    action: "Replace the chart with a matching layout",
+    journal: "You tried labels and a lookup chart. When the chart went missing, you replaced it with controls that match the lamps and show their state.",
+  },
+} as const;
+
+function isSwitchboardChoice(value: unknown): value is NonNullable<Progress["switchboardChoice"]> {
+  return value === "spatial-map" || value === "manual-labels";
+}
 
 const AUDIO_PREFERENCE_KEY = "design-warden-audio:v1";
 const AMBIENT_VOLUME = 0.25;
@@ -33,6 +53,7 @@ const PHASES: Phase[] = [
   "inspect",
   "diagnose",
   "repair",
+  "consequence",
   "reward",
   "complete",
 ];
@@ -156,13 +177,6 @@ const QUESTS: Quest[] = [
         feedback:
           "The matching layout makes the relationship obvious, and each lamp responds immediately when its switch changes.",
         correct: true,
-      },
-      {
-        id: "color-only",
-        label: "Give every switch and lamp a different color.",
-        feedback:
-          "Color can help, but it should not carry the mapping alone. It can be missed, forgotten, or perceived differently.",
-        correct: false,
       },
       {
         id: "manual-labels",
@@ -471,6 +485,36 @@ function freshProgress(): Progress {
   };
 }
 
+export function restoreGameProgress(value: unknown, quests: readonly Pick<Quest, "id">[], maxXp: number, isDemo: boolean): Progress {
+  const saved = value && typeof value === "object" ? value as Partial<Progress> : {};
+  const questIndex = Number(saved.currentQuest);
+  const currentQuest = Number.isFinite(questIndex) ? Math.max(0, Math.min(quests.length - 1, Math.floor(questIndex))) : 0;
+  const switchboardChoice = isDemo && isSwitchboardChoice(saved.switchboardChoice) ? saved.switchboardChoice : undefined;
+  let phase = PHASES.includes(saved.phase as Phase) ? saved.phase as Phase : "inspect";
+  if (phase === "consequence" && (!switchboardChoice || quests[currentQuest]?.id !== "constellation-controls")) phase = "repair";
+  return {
+    version: 1,
+    currentQuest,
+    phase,
+    xp: Number.isFinite(Number(saved.xp)) ? Math.max(0, Math.min(maxXp, Number(saved.xp))) : 0,
+    completed: Array.isArray(saved.completed) ? saved.completed.filter((id) => quests.some((quest) => quest.id === id)) : [],
+    principles: Array.isArray(saved.principles) ? saved.principles.filter((id) => quests.some((quest) => quest.id === id)) : [],
+    ...(switchboardChoice ? { switchboardChoice } : {}),
+  };
+}
+
+export function finishSwitchboardConsequence(current: Progress, maxXp: number): Progress {
+  const quest = QUESTS[current.currentQuest];
+  if (quest?.id !== "constellation-controls" || current.phase !== "consequence" || !isSwitchboardChoice(current.switchboardChoice)) return current;
+  return {
+    ...current,
+    phase: "reward",
+    xp: current.completed.includes(quest.id) ? current.xp : Math.min(maxXp, current.xp + quest.xp),
+    completed: current.completed.includes(quest.id) ? current.completed : [...current.completed, quest.id],
+    principles: current.principles.includes(quest.id) ? current.principles : [...current.principles, quest.id],
+  };
+}
+
 function rankForXP(xp: number, maxXp: number, generated: boolean) {
   if (generated) {
     if (xp >= maxXp) return { level: 4, title: "Design Practitioner" };
@@ -728,6 +772,9 @@ function PrincipleJournal({
                       Source: {quest.sourceAnchors.map((anchor) => `${anchor.label}, pp. ${anchor.pageStart}–${anchor.pageEnd}`).join("; ")}
                     </p>
                   ) : null}
+                  {unlocked && quest.id === "constellation-controls" && progress.switchboardChoice && (
+                    <p className="journal-source">{SWITCHBOARD_OUTCOMES[progress.switchboardChoice].journal}</p>
+                  )}
                 </div>
               </li>
             );
@@ -786,6 +833,11 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
   const audioRef = useRef<HTMLAudioElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const outcomeHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    if (!showIntro && progress.phase === "consequence") outcomeHeadingRef.current?.focus();
+  }, [progress.phase, showIntro]);
 
   useEffect(() => {
     let cancelled = false;
@@ -796,26 +848,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
       try {
         const raw = window.localStorage.getItem(storageKey);
         if (raw) {
-          const saved = JSON.parse(raw) as Partial<Progress>;
-          const completed = Array.isArray(saved.completed)
-            ? saved.completed.filter((id): id is string => quests.some((quest) => quest.id === id))
-            : [];
-          const principles = Array.isArray(saved.principles)
-            ? saved.principles.filter((id): id is string => quests.some((quest) => quest.id === id))
-            : [];
-          setProgress({
-            version: 1,
-            currentQuest: Math.max(
-              0,
-              Math.min(quests.length - 1, Number(saved.currentQuest) || 0),
-            ),
-            phase: PHASES.includes(saved.phase as Phase)
-              ? (saved.phase as Phase)
-              : "inspect",
-            xp: Math.max(0, Math.min(maxXp, Number(saved.xp) || 0)),
-            completed,
-            principles,
-          });
+          setProgress(restoreGameProgress(JSON.parse(raw), quests, maxXp, !game));
         }
       } catch {
         window.localStorage.removeItem(storageKey);
@@ -827,7 +860,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
     return () => {
       cancelled = true;
     };
-  }, [maxXp, quests, storageKey]);
+  }, [game, maxXp, quests, storageKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -894,6 +927,8 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
   const rank = rankForXP(progress.xp, maxXp, Boolean(game));
   const xpPercent = Math.round((progress.xp / maxXp) * 100);
   const quest = quests[progress.currentQuest];
+  const outcome = !game && quest.id === "constellation-controls" && progress.phase === "consequence" && progress.switchboardChoice
+    ? SWITCHBOARD_OUTCOMES[progress.switchboardChoice] : null;
   const phaseName =
     progress.phase === "inspect"
       ? "Observation"
@@ -901,9 +936,11 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
         ? "Find the cause"
         : progress.phase === "repair"
           ? "Repair"
-          : progress.phase === "reward"
-            ? "Principle acquired"
-            : "Complete";
+          : progress.phase === "consequence"
+            ? "See what happens"
+            : progress.phase === "reward"
+              ? "Principle acquired"
+              : "Complete";
 
   const unlockedPrinciples = useMemo(
     () => quests.filter((item) => progress.principles.includes(item.id)),
@@ -911,6 +948,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
   );
 
   const narrationText = useMemo(() => {
+    if (outcome) return `${outcome.title}. ${outcome.story} ${outcome.action}.`;
     if (progress.phase === "inspect") {
       return `${quest.title}. ${quest.story} Your task is to ${lowercaseFirst(quest.objective)} ${observationGuide(quest.observationTools)}`;
     }
@@ -926,7 +964,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
     return game
       ? `Your field study of ${game.sourceTitle} is complete.`
       : "The museum is ready to reopen. Your apprenticeship is complete.";
-  }, [feedback.text, game, progress.phase, quest]);
+  }, [feedback.text, game, outcome, progress.phase, quest]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1063,6 +1101,13 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
   };
 
   const handleRepair = (choice: Choice) => {
+    if (!game && quest.id === "constellation-controls" && isSwitchboardChoice(choice.id)) {
+      const switchboardChoice = choice.id;
+      stopNarration();
+      setSelectedChoice(null);
+      setProgress((current) => ({ ...current, phase: "consequence", switchboardChoice }));
+      return;
+    }
     setSelectedChoice(choice.id);
     setFeedback({ tone: choice.correct ? "good" : "bad", text: choice.feedback });
     if (!choice.correct) return;
@@ -1083,6 +1128,12 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
           : [...current.principles, quest.id],
       };
     });
+  };
+
+  const handleConsequence = () => {
+    stopNarration();
+    setProgress((current) => finishSwitchboardConsequence(current, maxXp));
+    setFeedback({ tone: "good", text: "The switches now match the lamps, and each control shows its lamp’s state. Try the repaired switchboard." });
   };
 
   const handleContinue = () => {
@@ -1400,7 +1451,7 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
               <span>{phaseName}</span>
               <div aria-label={phaseName + " stage"}>
                 {["inspect", "diagnose", "repair", "reward"].map((phase, index, phases) => {
-                  const currentIndex = phases.indexOf(progress.phase);
+                  const currentIndex = phases.indexOf(progress.phase === "consequence" ? "repair" : progress.phase);
                   return <span className={index <= currentIndex ? "is-active" : ""} key={phase} />;
                 })}
               </div>
@@ -1412,6 +1463,16 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
           </section>
 
           <aside className="decision-rail">
+            {outcome && (
+              <div className="rail-section">
+                <span className="eyebrow">What happens next</span>
+                <h2 ref={outcomeHeadingRef} tabIndex={-1}>{outcome.title}</h2>
+                <p className="rail-note">You chose: {quest.repairs.find((choice) => choice.id === progress.switchboardChoice)?.label}</p>
+                <p>{outcome.story}</p>
+                <p className="rail-note">The exhibit still shows the original design. Continue to try the final repair.</p>
+                <button className="button button-yellow" type="button" onClick={handleConsequence}>{outcome.action}<span aria-hidden="true">→</span></button>
+              </div>
+            )}
             {progress.phase === "inspect" && (
               <div className="rail-section">
                 <span className="eyebrow">{game ? "What to look for" : "Curator’s lens"}</span>
@@ -1479,8 +1540,8 @@ export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void
 
         <footer className="command-dock">
           <div className={"feedback feedback-" + feedback.tone} role="status" aria-live="polite">
-            <span>{feedback.tone === "bad" ? "Evidence check" : feedback.tone === "good" ? "Finding" : phaseName}</span>
-            <p>{feedback.text}</p>
+            <span>{outcome ? "Your decision" : feedback.tone === "bad" ? "Evidence check" : feedback.tone === "good" ? "Finding" : phaseName}</span>
+            <p>{outcome ? "Follow the keeper’s next shift to see how your choice works." : feedback.text}</p>
           </div>
           <div className="dock-actions">
             <button
