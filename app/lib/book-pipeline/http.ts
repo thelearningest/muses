@@ -50,6 +50,7 @@ export type BookJobApiDependencies = {
   capabilityHmacKey: string;
   identityHmacKey: string;
   providerUrlHmacKey: string;
+  localTunnelOrigin?: string;
   verifyTurnstile(token: string, remoteIp: string): Promise<boolean>;
   now(): number;
   newId(): string;
@@ -231,8 +232,12 @@ export function createBookJobApi(dependencies: BookJobApiDependencies) {
         if (rawBody.byteSize > dependencies.config.maxPdfBytes) {
           throw new HttpProblem(413, "pdf_too_large", "The PDF exceeds the upload limit.");
         }
-        const devLoopback = import.meta.env.DEV && ["localhost", "127.0.0.1", "[::1]"].includes(new URL(request.url).hostname);
-        const remoteIp = request.headers.get("cf-connecting-ip") ?? (devLoopback ? request.headers.get("x-book-local-network") : null);
+        const requestUrl = new URL(request.url);
+        const devLocalOrigin = import.meta.env.DEV && (
+          ["localhost", "127.0.0.1", "[::1]"].includes(requestUrl.hostname) ||
+          requestUrl.origin === dependencies.localTunnelOrigin
+        );
+        const remoteIp = request.headers.get("cf-connecting-ip") ?? (devLocalOrigin ? request.headers.get("x-book-local-network") : null);
         if (!remoteIp) throw new HttpProblem(400, "network_signal_required", "A network signal is required.");
         if (!(await dependencies.verifyTurnstile(rawBody.turnstileToken, remoteIp))) {
           throw new HttpProblem(403, "turnstile_failed", "Please complete the verification challenge again.");
@@ -516,6 +521,8 @@ export async function createRuntimeBookJobApi() {
     capabilityHmacKey: requireSecret(env.BOOK_CAPABILITY_HMAC_KEY, "BOOK_CAPABILITY_HMAC_KEY"),
     identityHmacKey: requireSecret(env.BOOK_IDENTITY_HMAC_KEY, "BOOK_IDENTITY_HMAC_KEY"),
     providerUrlHmacKey: requireSecret(env.BOOK_PROVIDER_URL_HMAC_KEY, "BOOK_PROVIDER_URL_HMAC_KEY"),
+    localTunnelOrigin: import.meta.env.DEV && typeof env.BOOK_LOCAL_TUNNEL_ORIGIN === "string"
+      ? env.BOOK_LOCAL_TUNNEL_ORIGIN : undefined,
     verifyTurnstile: (token, remoteIp) =>
       verifyTurnstileResponse(token, turnstileSecret, remoteIp),
     now: () => Math.floor(Date.now() / 1_000),

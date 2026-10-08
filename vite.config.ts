@@ -1,5 +1,5 @@
 import vinext from "vinext";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { sites } from "./build/sites-vite-plugin";
 import { localNetworkSignal } from "./build/local-network-signal";
@@ -34,7 +34,12 @@ const localBindingConfig = {
     : [],
 };
 
-export default defineConfig(async () => {
+export default defineConfig(async ({ mode }) => {
+  const tunnelOrigin = loadEnv(mode, process.cwd(), "BOOK_LOCAL_TUNNEL_ORIGIN").BOOK_LOCAL_TUNNEL_ORIGIN;
+  const tunnelUrl = tunnelOrigin ? new URL(tunnelOrigin) : undefined;
+  if (tunnelUrl && (tunnelUrl.protocol !== "https:" || tunnelUrl.origin !== tunnelOrigin)) {
+    throw new Error("BOOK_LOCAL_TUNNEL_ORIGIN must be an HTTPS origin without a path or trailing slash");
+  }
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= "false";
@@ -45,9 +50,10 @@ export default defineConfig(async () => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
-    server: isCodexSeatbeltSandbox
-      ? { watch: { useFsEvents: false, usePolling: true } }
-      : undefined,
+    server: {
+      allowedHosts: tunnelUrl ? [tunnelUrl.hostname] : [],
+      ...(isCodexSeatbeltSandbox ? { watch: { useFsEvents: false, usePolling: true } } : {}),
+    },
     plugins: [
       localNetworkSignal(),
       vinext(),

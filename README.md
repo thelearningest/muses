@@ -29,6 +29,10 @@ The application is built for OpenAI Sites with these bindings in `.openai/hostin
 
 Apply the SQL migrations from `drizzle/` in order to the bound D1 database before enabling generation.
 
+For local PDF generation, OpenAI must be able to fetch signed PDF-section URLs from your server. Start an HTTPS tunnel to the development server. Set `BOOK_LOCAL_TUNNEL_ORIGIN=https://your-tunnel-host` in ignored `.env.local`, without a trailing slash. Restart the development server and open the tunnel URL before uploading.
+
+This setting allows only that hostname and enables the socket-derived development network signal for that origin. It has no effect on production admission checks. Update the setting whenever the tunnel hostname changes. All tunnel users share the local connection's network quota.
+
 ### Required server secrets
 
 ```text
@@ -45,7 +49,7 @@ Use separate random values of at least 16 characters for the three HMAC keys. Co
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=
 ```
 
-For local development only, Cloudflare's always-pass Turnstile test site key is used automatically when no public key is set. Pair it with Cloudflare's always-pass test secret (`1x0000000000000000000000000000000AA`) locally. Never use test keys for a public deployment.
+For local development only, set `NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA` to use Cloudflare's always-pass test widget. Pair it with Cloudflare's always-pass test secret (`1x0000000000000000000000000000000AA`) locally. Without a public site key, the upload form disables generation. Never use test keys for a production deployment.
 
 New jobs default to `BOOK_OCR_PROVIDER=luna` and need no Mistral key. This setting is the backward-compatible name for the OpenAI ingestion route; the v4 batch extraction manifest pins Sol. Visual selection remains Luna. `MISTRAL_API_KEY` is needed only for explicitly selected Mistral ingestion or legacy jobs. The provider-URL HMAC key protects temporary section URLs and legacy OCR source URLs; it is not a Mistral credential.
 

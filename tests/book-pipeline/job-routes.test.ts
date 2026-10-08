@@ -85,6 +85,33 @@ function makeDependencies(overrides: Partial<BookJobApiDependencies> = {}) {
 }
 
 describe("book job routes", () => {
+  it.each([
+    ["configured development tunnel", true, "https://books.example", 201],
+    ["unconfigured hostname", true, undefined, 400],
+    ["different tunnel hostname", true, "https://other.example", 400],
+    ["production request", false, "https://books.example", 400],
+  ] as const)("checks the local network signal for a %s", async (_label, dev, localTunnelOrigin, status) => {
+    vi.stubEnv("DEV", dev);
+    try {
+      const dependencies = makeDependencies({ localTunnelOrigin });
+      const response = await createBookJobApi(dependencies).create(request("/api/book-jobs", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-book-local-network": "127.0.0.1" },
+        body: JSON.stringify({ filename: "book.pdf", mimeType: "application/pdf", byteSize: 9,
+          sourceFingerprint: "fingerprint", browserToken: "browser-token-long-enough",
+          turnstileToken: "turnstile-token", rightsConfirmed: true }),
+      }));
+      expect(response.status).toBe(status);
+      if (status === 201) expect(dependencies.verifyTurnstile).toHaveBeenCalledWith("turnstile-token", "127.0.0.1");
+      else {
+        expect((await response.json()).error.code).toBe("network_signal_required");
+        expect(dependencies.repository.createJob).not.toHaveBeenCalled();
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("serves only the section named in an unexpired provider token", async () => {
     const deps = makeDependencies();
     const get = vi.fn(async (_job: string, path: string) => ({ key: path, text: async () => "", arrayBuffer: async () => new TextEncoder().encode("%PDF-section").buffer }));
