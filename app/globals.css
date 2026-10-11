@@ -2955,3 +2955,162 @@ button:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Creation home: a focused workspace above a separate game library. */
+.library-shell {
+  max-width: 1440px;
+  padding: 0 clamp(1.25rem, 4vw, 4rem) 4rem;
+}
+
+.library-shell .library-header {
+  border-bottom: 0;
+  min-height: 88px;
+  align-items: center;
+}
+
+.library-shell .brand-mark { flex-direction: row-reverse; gap: 1rem; }
+.library-shell .brand-mark strong { font-size: 1.1rem; letter-spacing: 0.16em; }
+.library-shell .brand-mark span { color: var(--muted); }
+.library-shell .library-jump { font-size: 0.85rem; text-decoration: none; }
+.library-shell .library-jump:hover { text-decoration: underline; }
+
+.library-shell .library-hero {
+  border: 0;
+  display: block;
+  padding: clamp(2rem, 5vw, 4.5rem) 0 2.5rem;
+  text-align: center;
+}
+
+.library-shell .library-hero h1 {
+  font-size: clamp(2.5rem, 4.5vw, 4.5rem);
+  letter-spacing: -0.055em;
+  line-height: 1.08;
+  max-width: 18ch;
+  margin: 0 auto 1.25rem;
+  text-wrap: balance;
+}
+
+.library-shell .library-hero p {
+  font-family: var(--sans);
+  font-size: 1rem;
+  line-height: 1.65;
+  max-width: 52ch;
+  margin: 0 auto;
+  text-wrap: pretty;
+}
+
+.library-shell .library-grid { grid-template-columns: minmax(0, 1fr); gap: 4rem; }
+.library-shell .upload-panel {
+  width: 100%;
+  max-width: 640px;
+  min-width: 0;
+  justify-self: center;
+  padding: 1.75rem;
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+}
+
+.library-shell .upload-panel h2 {
+  font-family: var(--sans);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  margin: 0 0 1.25rem;
+}
+
+.library-shell .upload-panel form { gap: 1rem; }
+.library-shell .file-field {
+  background: var(--paper);
+  border: 1px dashed var(--rule);
+  border-radius: 8px;
+  padding: 1.5rem;
+  gap: 1rem;
+  min-width: 0;
+}
+.library-shell .file-field:focus-within { outline: 2px solid var(--ink); outline-offset: 3px; }
+.library-shell .file-field > span {
+  font-family: var(--sans);
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.library-shell .file-field input { width: 100%; color: var(--muted); font-size: 0.85rem; }
+.library-shell .file-field input::file-selector-button {
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.library-shell .file-field small,
+.library-shell .generation-note,
+.library-shell .generation-filename { color: var(--muted); line-height: 1.6; font-size: 0.8rem; }
+.library-shell .rights-field { font-size: 0.8rem; align-items: center; }
+.library-shell .rights-field input { margin: 0; accent-color: var(--ink); }
+.library-shell .challenge-warning,
+.library-shell .job-interruption,
+.library-shell .form-error { color: var(--red-dark); }
+.library-shell .upload-details { border-color: var(--rule); margin-top: 1.25rem; padding-top: 0.75rem; color: var(--muted); font-size: 0.8rem; }
+.library-shell .upload-details summary { color: var(--muted); padding: 0.5rem 0; }
+.library-shell .button { border-radius: 6px; min-height: 44px; font-weight: 500; }
+.library-shell .button:not(:disabled):hover { transform: none; }
+.library-shell .button:disabled { cursor: not-allowed; }
+.library-shell .button-primary { background: var(--ink); color: var(--white); }
+.library-shell .button-primary:not(:disabled):hover { background: var(--muted); }
+.library-shell .button-primary:disabled { opacity: 1; background: var(--paper-depth); border-color: var(--paper-depth); color: var(--muted); }
+.library-shell :is(button, a, input, summary):focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+
+.library-shell .job-stage-list { border-color: var(--rule); }
+.library-shell .job-stage-list li,
+.library-shell .job-stage-list li > span { color: var(--muted); }
+.library-shell .job-stage-list .is-current { color: var(--ink); }
+.library-shell .job-stage-list .is-complete,
+.library-shell .job-stage-list .is-complete > span,
+.library-shell .job-stage-list .is-current > span { color: var(--green); }
+.library-shell .job-stage-list .is-current strong::after { background: var(--green); }
+.library-shell .pipeline-progress-copy,
+.library-shell .pipeline-progress-copy strong { color: var(--ink); }
+.library-shell .pipeline-progress progress,
+.library-shell .pipeline-progress progress::-webkit-progress-bar { background: var(--paper-depth); }
+.library-shell .pipeline-progress progress::-webkit-progress-value { background: var(--green); }
+.library-shell .pipeline-progress progress::-moz-progress-bar { background: var(--green); }
+.library-shell .text-button-light { color: var(--muted); }
+
+.library-shell .game-library {
+  background: transparent;
+  padding: 2rem 0 0;
+  border-top: 1px solid var(--rule);
+  width: 100%;
+  max-width: 960px;
+  min-width: 0;
+  justify-self: center;
+}
+.library-shell .game-library h2 { font-size: 1.6rem; margin: 0 0 0.65rem; }
+.library-shell .library-hint { font-size: 0.85rem; margin: 0 0 1.5rem; }
+.library-shell .game-card { gap: 2rem; padding: 1.5rem 0; }
+.library-shell .game-card-featured { border-left: 0; }
+.library-shell .game-card h3 { font-size: 1.7rem; letter-spacing: -0.025em; }
+.library-shell .game-card p { font-size: 0.9rem; max-width: 60ch; margin-bottom: 0; }
+.library-shell .game-card-kicker { font-size: 0.65rem; }
+.library-shell .game-card .button { white-space: nowrap; align-self: center; }
+.library-shell .game-card-actions { flex-wrap: wrap; }
+
+@media (max-width: 767px) {
+  .library-shell .library-header { min-height: 72px; padding: 1rem 0; }
+  .library-shell .brand-mark { flex-direction: column-reverse; gap: 0.45rem; }
+  .library-shell .brand-mark span { font-size: 0.7rem; }
+  .library-shell .library-hero { padding: 2rem 0; }
+  .library-shell .library-hero p { font-size: 0.9rem; }
+  .library-shell .library-grid { gap: 2.5rem; }
+  .library-shell .upload-panel { padding: 1.25rem; }
+  .library-shell .file-field { padding: 1rem; }
+  .library-shell .game-library { padding-top: 1.5rem; }
+  .library-shell .game-card { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+  .library-shell .game-card .button { justify-self: start; }
+}
