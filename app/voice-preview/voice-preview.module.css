@@ -1,0 +1,25 @@
+.page { min-height: 100svh; background: #eee8dc; color: #29342f; padding: 48px 24px; }
+.content { max-width: 700px; margin: 0 auto; }
+.back { display: inline-block; color: inherit; font-size: 14px; padding: 8px 0; margin-bottom: 44px; }
+.eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 650; margin: 0 0 14px; }
+.page h1 { font-family: Georgia, serif; font-size: clamp(36px, 6vw, 52px); line-height: 1.1; font-weight: 400; letter-spacing: -.03em; margin: 0 0 18px; }
+.intro { font-size: 17px; line-height: 1.65; max-width: 580px; margin: 0 0 32px; }
+.voices { border: 0; padding: 0; margin: 0 0 24px; display: flex; gap: 12px; }
+.voices legend { font-size: 14px; font-weight: 650; margin-bottom: 10px; }
+.voices label { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 12px 22px; border: 1px solid #76796e; cursor: pointer; border-radius: 4px; }
+.voices label.selected { background: #29342f; color: #f6f0df; }
+.voices input { accent-color: #b89b53; }
+.scene { display: flex; align-items: center; gap: 14px; font-size: 14px; font-weight: 650; }
+.scene select { min-height: 44px; max-width: 100%; padding: 8px 12px; background: #f6f0df; color: #29342f; border: 1px solid #76796e; border-radius: 4px; font: inherit; }
+.script { margin: 28px 0; padding: 26px 0; border-top: 1px solid #b5b4a6; border-bottom: 1px solid #b5b4a6; }
+.script h2 { font-size: 14px; margin: 0 0 12px; font-weight: 650; }
+.script p { font-family: Georgia, serif; font-size: clamp(23px, 4vw, 28px); line-height: 1.55; margin: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.actions button { min-height: 48px; padding: 12px 24px; border: 1px solid #29342f; background: #29342f; color: #f6f0df; border-radius: 4px; font: inherit; font-weight: 600; cursor: pointer; }
+.actions button:first-child { min-width: 200px; }
+.actions button:nth-child(2) { color: #29342f; background: transparent; }
+.actions button:disabled { opacity: .6; cursor: default; }
+.page :is(button, select, a, input):focus-visible { outline: 3px solid #765923; outline-offset: 4px; }
+.status { min-height: 3em; margin: 16px 0 0; font-size: 14px; line-height: 1.5; }
+.disclosure { font-size: 12px; line-height: 1.6; color: #535c52; margin: 18px 0 0; }
+@media (max-width: 480px) { .page { padding: 24px 20px; } .back { margin-bottom: 28px; } .voices label { flex: 1; justify-content: center; padding: 12px; } }

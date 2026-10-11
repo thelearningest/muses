@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "model": "gpt-4o-mini-tts-2025-12-15",
+  "generatedAt": "2026-10-11T04:46:34.557Z",
+  "clips": [
+    {
+      "id": "gate-observation",
+      "text": "Take a look at this gate. Before you touch it, what does the handle invite you to do? Now try it. Did the gate behave the way you expected?",
+      "voice": "cedar",
+      "src": "/audio/narration/bff9a0b9ca4f795beefe0f20c9de23390d20e3958eedcc655606cbd4bc958065.mp3",
+      "model": "gpt-4o-mini-tts"
+    },
+    {
+      "id": "gate-observation",
+      "text": "Take a look at this gate. Before you touch it, what does the handle invite you to do? Now try it. Did the gate behave the way you expected?",
+      "voice": "marin",
+      "src": "/audio/narration/e19c374c1558fe43948724c0a3cc9bfc6b5993aaaef8d3ff3f484745531408ed.mp3",
+      "model": "gpt-4o-mini-tts"
+    },
+    {
+      "id": "gate-discovery",
+      "text": "That felt different, didn't it? The flat plate gives your hand a place to push. A small change to the object can make the next step much clearer.",
+      "voice": "cedar",
+      "src": "/audio/narration/7e7fafeaf2be6e167e4c19313a4a511714f33ed06617845a3c3f2c178be651e0.mp3",
+      "model": "gpt-4o-mini-tts"
+    },
+    {
+      "id": "gate-discovery",
+      "text": "That felt different, didn't it? The flat plate gives your hand a place to push. A small change to the object can make the next step much clearer.",
+      "voice": "marin",
+      "src": "/audio/narration/afc4327fbbc5f9b378d6ad4bd65c0d157e0b7e4bd4d98bbbd5e97274deef0a51.mp3",
+      "model": "gpt-4o-mini-tts"
+    },
+    {
+      "id": "welcome",
+      "text": "Welcome to the City of Misfit Things! Come on in. There are curious little surprises everywhere. Try an object, see what happens, and discover what you can change. Ready? Let's explore!",
+      "voice": "cedar",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/cb60aaa7390ca369a69c2017de86cfda562b52e0e8ca5c4e1ff245d700cb77c1.mp3"
+    },
+    {
+      "id": "welcome",
+      "text": "Welcome to the City of Misfit Things! Come on in. There are curious little surprises everywhere. Try an object, see what happens, and discover what you can change. Ready? Let's explore!",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/b63a70e0d8a2acd806c0f79e84ef660347ac108d45dd1482d1e676393d5cd8b5.mp3"
+    }
+  ]
+}
