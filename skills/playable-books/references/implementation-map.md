@@ -28,9 +28,12 @@ gallery positions remain fixed; the option customises the shared template's sign
 
 `app/print-shop/` reuses that architecture and `MuseumWalker`, with five original
 prints, a shared layout model for 3D and guided proofs, separate saves, and the
-existing `MuseumNarration` player. `app/demo/` provides the isolated, exact-PDF
-fixture replay: one file selection, 12 seconds of staged loading, then automatic
-game opening. It does not extend the real generated `GamePackage` capability.
+existing `MuseumNarration` player. `app/BookRpgApp.tsx` integrates the exact-PDF
+fixture replay into the main upload panel and library, using `app/prepared-book/`.
+One file selection starts 12 seconds of staged loading, then opens the game
+automatically. `/demo` redirects to `/`; it has no separate library. Other PDFs
+use the existing real generation form. The prepared path does not extend the real
+generated `GamePackage` capability.
 
 ## Package and storage contracts
 

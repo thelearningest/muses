@@ -6,7 +6,7 @@ Use this workflow when the user requests a staged creation process backed by an 
 
 Finish the second game's source review, representative quest, book-specific visual direction, saves, and narration before rehearsal. Keep the complete playable game available locally so the presentation does not depend on generation services.
 
-Give both books visible identities in the app. Route each to its own game and save namespace. Store the replay's chosen book and progress outside real resumable-job state.
+Give both books visible identities in the main app. Do not make a separate presentation library when the existing app can host the prepared flow. Route each to its own game and save namespace. Store the replay's chosen book and progress outside real resumable-job state.
 
 Use the supplied book as the fixture match. If upload is part of the demonstration, identify the approved fixture reliably. Do not return the same prebuilt game for every uploaded PDF. Explain unsupported files in the demo path rather than pretending to generate a matching game.
 
@@ -17,7 +17,9 @@ Keep the real job client and server quotas outside replay execution. Simulated u
 For a two-minute demo, select the PDF with one upload action, show about 12 seconds
 of staged progress, then open the prepared game automatically. Keep templates and
 assets ready beforehand. The short replay is presentation timing, not a generation
-benchmark. Use `app/demo/replay.ts` for the prepared path; never invoke the real
+benchmark. Use the main app at `/`, with `app/prepared-book/replay.ts` for replay state and
+`app/prepared-book/PreparedBookReplay.tsx` for its lifecycle and shared UI. `/demo`
+redirects to the main app. Reuse the existing upload panel and library; never invoke the real
 paid job client to imitate loading.
 
 1. Introduce the product as a book-to-game generator and show The City of Misfit Things as the first example.

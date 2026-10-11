@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { webcrypto } from "node:crypto";
-import { FIXTURE_DIGEST, matchesFixture, newReplay, replayProgress, REPLAY_DURATION_MS, restoreReplay } from "../app/demo/replay";
+import { FIXTURE_DIGEST, matchesFixture, newReplay, replayProgress, REPLAY_DURATION_MS, restoreReplay } from "../app/prepared-book/replay";
 
 describe("prepared book replay", () => {
   it("advances from timestamps even after leaving the library or refreshing", () => {

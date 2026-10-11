@@ -14,7 +14,7 @@ system; check its source, compatibility, and license rather than its README alon
 | Learning flow | `app/Game.tsx`, `MuseumGame.tsx`, `app/museum/experiments.ts` | Reuse observe, experiment, feedback, repair, reward, journal, and shared accessible controls; create source-specific actions |
 | Save and library | `app/game-library.ts`, existing versioned progress | Retain restoration and separate stable book identifiers; do not weaken generated-package image requirements |
 | Print workshop | `app/print-shop/model.ts`, `print-texture.ts`, `shop-scene.ts` | The same layout data drives an editable proof and its 3D print; history stores plain application state |
-| Short demo | `app/demo/replay.ts`, `DemoLibrary.tsx` | Exact PDF fingerprint, 12-second replay, automatic prepared-game reveal, separate replay state |
+| Short demo | `app/prepared-book/`, `BookRpgApp.tsx` | Exact PDF fingerprint, 12-second replay, automatic prepared-game reveal, separate replay state |
 
 Keep original third-party notices. The existing movement module credits the
 MIT-licensed ThreeMuseum source in `THIRD_PARTY_NOTICES.md`. Do not relabel custom

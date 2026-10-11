@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Game } from "./Game";
+import { PreparedBookBanner, PreparedBookProgress, usePreparedBookReplay } from "./prepared-book/PreparedBookReplay";
 import {
   BookJobClient,
   BookJobClientError,
@@ -23,6 +24,7 @@ import { BrowserOperationError, browserOperation } from "./browser-operations";
 import { createRecoverableRenderer } from "./recoverable-renderer";
 
 type VisualPageRendererModule = typeof import("./visual-page-renderer");
+const PrintShop = lazy(() => import("./print-shop/PrintShop").then(module => ({ default: module.PrintShop })));
 let visualPageRendererModulePromise: Promise<VisualPageRendererModule> | undefined;
 
 function loadVisualPageRendererModule() {
@@ -173,7 +175,13 @@ export function JobProgress({ job, status, preparation, needsSourceFile, onSourc
 
 export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: string } = {}) {
   const [games, setGames] = useState<GamePackage[]>([]);
-  const [selected, setSelected] = useState<GamePackage | "example" | null>(null);
+  const [selected, setSelected] = useState<GamePackage | "example" | "print-shop" | null>(null);
+  const openPrintShop = useCallback(() => {
+    setSelected("print-shop");
+    requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  }, []);
+  const prepared = usePreparedBookReplay(openPrintShop);
+  const [hasLiveFile, setHasLiveFile] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [activeJob, setActiveJob] = useState<ResumableBookJob | null>(null);
   const [jobStatus, setJobStatus] = useState<BookJobStatusResponse | null>(null);
@@ -323,6 +331,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
 
   const createGame = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (prepared.checking || prepared.running) return;
     const file = fileRef.current?.files?.[0];
     if (!file) { setError("Choose a PDF book to continue."); return; }
     sourceFile.current = file;
@@ -381,37 +390,53 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     } catch (retryError) { setError(messageFor(retryError)); }
   };
 
-  if (selected === "example") return <Game key="example" onExit={() => setSelected(null)} />;
+  const resetPrepared = () => {
+    prepared.reset();
+    if (fileRef.current) fileRef.current.value = "";
+    setHasLiveFile(false);
+  };
+  const selectBook = async (file: File | undefined) => {
+    setError(""); setHasLiveFile(false);
+    if (!file) return;
+    const matched = await prepared.selectFile(file);
+    if (matched) { if (fileRef.current) fileRef.current.value = ""; }
+    else setHasLiveFile(true);
+  };
+
+  if (selected === "print-shop") return <Suspense fallback={<main className="library-shell"><p role="status">Opening The Last Print Shop…</p></main>}><PrintShop onExit={() => setSelected(null)} /></Suspense>;
+  if (selected === "example") return <>{prepared.replay && <PreparedBookBanner percent={prepared.progress.percent} complete={prepared.progress.complete} onLibrary={() => setSelected(null)} onOpen={openPrintShop} />}<Game key="example" onExit={() => setSelected(null)} /></>;
   if (selected) return <Game key={selected.id} game={selected} onExit={() => setSelected(null)} />;
 
   return (
-    <main className="library-shell" aria-busy={!hydrated || isStarting}>
+    <main className="library-shell" aria-busy={!hydrated || isStarting || prepared.checking}>
       <header className="library-header"><div className="brand-mark"><span>Learn by playing</span><strong>Playable Books</strong></div><a className="library-jump" href="#library-title">Your games ↓</a></header>
       <section className="library-hero">
         <div><h1>Put your book into practice.</h1><p>Turn its key ideas into quests. Explore a problem, choose a solution, and learn why it works.</p></div>
       </section>
       <div className="library-grid">
         <section className="upload-panel" aria-labelledby="upload-title">
-          <h2 id="upload-title">{activeJob ? "Your game is on its way" : "Start with a PDF"}</h2>
-          {activeJob ? <JobProgress job={activeJob} status={jobStatus} preparation={preparationProgress} needsSourceFile={needsSourceFile} locallyPaused={locallyPaused} hidden={hidden} phase={preparationPhase}
+          <h2 id="upload-title">{activeJob || prepared.running ? "Your game is on its way" : "Start with a PDF"}</h2>
+          {prepared.running ? <PreparedBookProgress percent={prepared.progress.percent} stage={prepared.progress.stage} onCancel={resetPrepared} /> : activeJob ? <JobProgress job={activeJob} status={jobStatus} preparation={preparationProgress} needsSourceFile={needsSourceFile} locallyPaused={locallyPaused} hidden={hidden} phase={preparationPhase}
             onSourceFile={(file) => { sourceFile.current = file; setNeedsSourceFile(false); setLocallyPaused(false); setError(""); setDriveVersion((value) => value + 1); }}
             onRetry={() => void retryJob()} onCancel={() => void cancelJob()} /> : (
             <>
               <form onSubmit={createGame}>
-                <label className="file-field"><span>Choose your book</span><input ref={fileRef} type="file" accept="application/pdf,.pdf" required /><small>PDF, up to 50 MB · 300 pages maximum. Scans work too.</small></label>
-                <label className="rights-field"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} required /><span>I own this book or have permission to use it.</span></label>
-                <Turnstile onToken={setTurnstileToken} siteKey={turnstileSiteKey} />
+                <label className="file-field"><span>Choose your book</span><input ref={fileRef} type="file" accept="application/pdf,.pdf" disabled={!hydrated || isStarting || prepared.checking} onChange={event => void selectBook(event.target.files?.[0])} required /><small>Select the supplied Robin Williams PDF to open its prepared 3D game after 12 seconds of staged loading.</small><small>For other books: PDF, up to 50 MB · 300 pages maximum. Scans work too.</small></label>
+                {prepared.checking && <p className="generation-note" role="status">Checking your book…</p>}
+                {hasLiveFile && <><label className="rights-field"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} required /><span>I own this book or have permission to use it.</span></label><Turnstile onToken={setTurnstileToken} siteKey={turnstileSiteKey} /></>}
                 {error && <p className="form-error" role="alert">{error}</p>}
-                <button className="button button-primary" type="submit" disabled={!hydrated || !rightsConfirmed || !turnstileToken || isStarting}>{isStarting ? "Uploading your book…" : "Create my game"}<span aria-hidden="true">→</span></button>
-                <p className="generation-note">Allow a few minutes. Keep this tab open until your game is ready.</p>
+                {hasLiveFile && <><button className="button button-primary" type="submit" disabled={!hydrated || !rightsConfirmed || !turnstileToken || isStarting || prepared.checking}>{isStarting ? "Uploading your book…" : "Create my game"}<span aria-hidden="true">→</span></button><p className="generation-note">Allow a few minutes. Keep this tab open until your game is ready.</p></>}
               </form>
               <details className="upload-details"><summary>Upload limits & privacy</summary><p>You can start up to 5 uploads in 24 hours per browser or shared network. The site accepts up to 20 books a day, resetting at midnight UTC.</p><p>Your book is sent to OpenAI for processing. Temporary files are removed within 24 hours; older uploads may also have used Mistral. Your finished games are saved in this browser.</p></details>
             </>
           )}
           {activeJob && error && <p className="form-error" role="alert">{error}</p>}
+          {prepared.notice && <p className="generation-note" role="status">{prepared.notice}</p>}
+          {!activeJob && !prepared.running && <details className="upload-details"><summary>Prepared demo controls</summary><p>Demo replay using a prepared game. No live generation runs, and the selected fixture stays in this browser.</p><button className="button button-secondary" type="button" disabled={!hydrated || prepared.checking || isStarting} onClick={() => { if (fileRef.current) fileRef.current.value = ""; setHasLiveFile(false); prepared.startPrepared(); }}>Try the prepared book →</button>{prepared.replay && <p><button className="text-button text-button-light" type="button" onClick={resetPrepared}>Reset prepared demo</button></p>}</details>}
         </section>
         <section className="game-library" aria-labelledby="library-title">
-          <div className="library-section-heading"><div><h2 id="library-title">Your games</h2><p className="library-hint">{games.length ? "Saved in this browser. Pick a game to start or continue." : "Your games will appear here. Try the demo while you choose a book."}</p></div></div>
+          <div className="library-section-heading"><div><h2 id="library-title">Your games</h2><p className="library-hint">{games.length || prepared.progress.complete ? "Saved in this browser. Pick a game to start or continue." : "Your games will appear here. Try the demo while you choose a book."}</p></div></div>
+          {prepared.progress.complete && <article className="game-card"><div><span className="game-card-kicker">The Non-Designer’s Design Book · 5 print orders · 3D workshop</span><h3>The Last Print Shop</h3><p>Rescue the town’s menus, notices, and tickets. Learn proximity, alignment, repetition, and contrast by changing the prints.</p></div><button className="button button-yellow" type="button" onClick={openPrintShop}>Open the print shop <span aria-hidden="true">→</span></button></article>}
           {games.map((game) => <article className="game-card" key={game.id}><div><span className="game-card-kicker">{game.quests.length} quests · {game.sourceTitle}</span><h3>{game.title}</h3><p>{game.subtitle}</p>{!hasPlayableVisuals(game) && <p>This older game has no visual exercises. Upload the same PDF above to create a new visual version.</p>}</div><div className="game-card-actions"><button className="button button-yellow" type="button" disabled={!hasPlayableVisuals(game)} onClick={() => setSelected(game)}>Open game <span aria-hidden="true">→</span></button><button className="text-button" type="button" aria-label={`Remove ${game.title}`} onClick={() => { if (window.confirm(`Remove “${game.title}” from this device?`)) void removeGame(game.id); }}>Remove</button></div></article>)}
           <article className="game-card game-card-featured"><div><span className="game-card-kicker">Demo · 6 quests · No upload needed</span><h3>The City of Misfit Things</h3><p>Fix everyday objects that confuse people, from misleading doors to puzzling controls.</p></div><button className="button button-secondary" type="button" onClick={() => setSelected("example")}>Try the demo <span aria-hidden="true">→</span></button></article>
         </section>

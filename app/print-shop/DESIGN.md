@@ -7,7 +7,7 @@ The story, café menu, festival programme, and graphics are original.
 
 Beginner players prepare five print orders for a town festival. The full workshop
 takes roughly ten minutes; a two-minute product presentation features one order.
-The presentation uses `/demo`: selecting the supplied PDF starts a 12-second
+The presentation uses the main app at `/`: selecting the supplied PDF starts a 12-second
 replay and opens the prepared `/print-shop` game. The optional prepared-book button
 rehearses the same sequence without a file picker. No live jobs or paid calls run.
 
@@ -47,8 +47,8 @@ session-local. Context loss or unavailable WebGL leaves the guided workbench rea
 Reset replaces only this game's save. Replay uses `playable-books:demo-replay:v1`.
 
 The supplied PDF is matched by SHA-256, not its filename. The file stays in the
-browser; this replay does not upload its contents. Unsupported PDFs get an explicit
-message. Replay timing is staged and is not a benchmark of automatic generation.
+browser; this replay does not upload its contents. Other PDFs remain in the existing real-generation form. Selecting a file alone
+does not submit a real job. Replay timing is staged and is not a benchmark of automatic generation.
 
 ## Repository research
 
@@ -63,13 +63,14 @@ existing room template at the user's request.
 
 ## Two-minute rehearsal
 
-1. Open `/demo` and select the supplied PDF. Loading starts automatically.
+1. Open `/` and select the supplied PDF. Loading starts automatically.
 2. During the 12-second replay, briefly identify Misfit Things as the first book.
 3. The prepared game opens; enter the shop and work on the café menu.
 4. Make the dish/description gap smaller and the gap between dishes larger.
 5. Check the proof, show the changed print, then explain book idea → activity →
-   consequence using the mapping on `/demo#how-it-works`.
+   consequence using the source mapping in this design record.
 
-Use Reset replay for another upload rehearsal. Start a fresh shift resets only
+Use Reset prepared demo for another upload rehearsal. `/demo` redirects to the
+main app. The former separate demo library was removed. Start a fresh shift resets only
 the print-shop progress after its inline confirmation. Neither action resets
 Misfit progress or changes a real generation job.

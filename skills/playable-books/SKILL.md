@@ -45,7 +45,7 @@ The handcrafted museum and generated-image player have different capabilities. C
 
 Read [the demo replay workflow](references/demo-replay.md) only when the user requests a presentation or simulated creation process.
 
-Keep replay selection and progress separate from real job creation. Use a prebuilt, source-reviewed game for the chosen book. Explain the source-to-game process with concrete examples after the game is revealed. Do not present staged timings or manually authored mechanics as measured live generation results.
+Put the prepared upload, loading, game reveal, and library entry in the main app. Reuse its existing upload panel and library; do not build a separate demo shell unless the user requests one. Keep replay selection and progress separate from real job creation. Use a prebuilt, source-reviewed game for the chosen book. Explain the source-to-game process with concrete examples after the game is revealed. Do not present staged timings or manually authored mechanics as measured live generation results.
 
 For a two-minute presentation, prefer one upload action, about 12 seconds of staged loading, and automatic opening of the prepared game. Prepare and load reusable templates ahead of the demonstration. Do not build a world from scratch during the presentation. Keep the replay duration configurable and confirm the first interaction fits the presentation window.
 

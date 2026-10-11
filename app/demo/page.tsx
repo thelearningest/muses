@@ -1,3 +1,3 @@
-import { DemoLibrary } from "./DemoLibrary";
+import { redirect } from "next/navigation";
 
-export default function DemoPage() { return <DemoLibrary />; }
+export default function DemoPage() { redirect("/"); }
