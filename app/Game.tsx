@@ -27,7 +27,7 @@ type Progress = {
   switchboardChoice?: "spatial-map" | "manual-labels";
 };
 
-const SWITCHBOARD_OUTCOMES = {
+export const SWITCHBOARD_OUTCOMES = {
   "spatial-map": {
     title: "The keeper finds the right lamp",
     story: "The keeper reaches for the switch in the same position as the lamp. The lamp lights up, and the control confirms it is on. No lookup chart is needed.",
@@ -809,7 +809,14 @@ function SoundToggle({
   );
 }
 
+const MuseumGame = lazy(() => import("./MuseumGame").then(module => ({ default: module.MuseumGame })));
+
 export function Game({ game, onExit }: { game?: GamePackage; onExit?: () => void }) {
+  if (game) return <GuidedGame game={game} onExit={onExit} />;
+  return <Suspense fallback={<div role="status">Opening the museum…</div>}><MuseumGame quests={QUESTS} onExit={onExit} guidedView={<GuidedGame onExit={onExit} />} /></Suspense>;
+}
+
+function GuidedGame({ game, onExit }: { game?: GamePackage; onExit?: () => void }) {
   const quests = useMemo(
     () => game?.quests ?? QUESTS,
     [game],
