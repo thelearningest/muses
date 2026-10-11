@@ -53,12 +53,16 @@ export const MuseumWorld = forwardRef<MuseumWorldHandle, Props>(function MuseumW
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.12;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    // The building and lights are fixed. Refresh shadows only when an exhibit changes.
+    renderer.shadowMap.autoUpdate = false;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#e7e8e3");
-    scene.fog = new THREE.Fog("#e7e8e3", 38, 85);
-    scene.add(new THREE.HemisphereLight(0xeef4ff, 0xb8a082, 2.2));
-    const sun = new THREE.DirectionalLight(0xfff1d4, 3.2);
+    scene.background = new THREE.Color("#18262e");
+    scene.fog = new THREE.Fog("#18262e", 24, 72);
+    scene.add(new THREE.HemisphereLight(0xb6d4e8, 0x45403a, 0.9));
+    const sun = new THREE.DirectionalLight(0xc4dce8, 0.75);
     sun.position.set(-8, 18, 4); scene.add(sun);
     const camera = new THREE.PerspectiveCamera(62, 1, .08, 110);
     camera.position.set(ENTRANCE.x, 1.7, ENTRANCE.z);
@@ -83,6 +87,13 @@ export const MuseumWorld = forwardRef<MuseumWorldHandle, Props>(function MuseumW
         if (states[index] === lastStates[index] && completed[index] === lastCompleted[index]) return;
         if (models[index]) { scene.remove(models[index]!.root); models[index]!.dispose(); }
         const model = buildExhibit(gallery.kind, states[index], completed[index]);
+        model.root.traverse(object => {
+          if (object instanceof THREE.Mesh && !object.userData.nonBlocking) {
+            object.castShadow = true;
+            object.receiveShadow = true;
+          }
+        });
+        renderer.shadowMap.needsUpdate = true;
         model.root.position.set(...gallery.position);
         model.root.rotation.y = gallery.rotation;
         model.root.scale.setScalar(.65);
@@ -145,9 +156,12 @@ export const MuseumWorld = forwardRef<MuseumWorldHandle, Props>(function MuseumW
     canvas.addEventListener("pointerdown", down); canvas.addEventListener("pointerup", up); canvas.addEventListener("pointercancel", cancelPointer);
     const contextLost = (event: Event) => { event.preventDefault(); latest.current.onAvailability(false); };
     canvas.addEventListener("webglcontextlost", contextLost);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let frame = 0; let previous = performance.now();
     const draw = (now: number) => {
-      walker.update((now-previous)/1000); previous = now;
+      const delta = (now - previous) / 1000;
+      walker.update(delta); previous = now;
+      museum.update(delta, camera.position, reducedMotion.matches, latest.current.paused || document.hidden);
       let next: number | null = null; let distance = 3.8;
       GALLERIES.forEach(gallery => {
         const side = Math.sign(gallery.position[0]);
