@@ -8,9 +8,10 @@
 .sceneMount { position: absolute; inset: 0; width: 100%; height: 100%; }
 .sceneMount canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .cameraControls { padding: .65rem .9rem; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
-.cameraControls p { font-size: .75rem; color: var(--muted); margin: 0 0 .5rem; }
+.cameraControls p { font-size: .75rem; line-height: 1.4; min-height: 2.8em; color: var(--muted); margin: 0 0 .5rem; }
+.cameraControls small { display: block; margin-top: .6rem; font-size: .7rem; color: var(--muted); }
 .cameraControls > div { display: flex; flex-wrap: wrap; gap: .4rem; }
-.cameraControls button { border: 1px solid var(--rule); background: transparent; padding: .5rem .6rem; min-height: 38px; font-size: .75rem; flex: 1; }
+.cameraControls button { border: 1px solid var(--rule); background: transparent; padding: .5rem .6rem; min-height: 44px; font-size: .75rem; flex: 1; }
 .cameraControls button[aria-pressed="true"] { background: var(--ink); color: var(--white); border-color: var(--ink); }
 .experiment { padding: .7rem .9rem; }
 .experimentHeading { display: flex; align-items: center; justify-content: space-between; gap: .7rem; font-size: .875rem; }
@@ -33,4 +34,12 @@
 .lamps > span { display: flex; flex-direction: column; justify-content: center; align-items: center; width: 95px; min-height: 65px; border-radius: 50%; border: 2px solid #746e5e; background: #c4bdac; font-size: .75rem; }
 .lamps strong { margin-top: .3rem; font-family: var(--mono); }
 .lamps > span.lit { background: #ffe8a0; box-shadow: 0 0 18px #eed467; }
+.gateActions { display: flex; gap: .5rem; margin: .6rem 0 .8rem; }
+.gateActions button { flex: 1; min-height: 44px; border: 1px solid #aaa392; background: #eee9df; padding: .6rem; font-size: .8125rem; }
+.gateActions button:hover:not(:disabled) { background: var(--yellow); border-color: var(--ink); }
+.gateFlat { position: relative; width: 130px; height: 185px; border: 8px solid #262b27; background: #9f211c; color: #fffdf7; display: grid; place-items: center; font: .75rem var(--mono); }
+.gateFlat[data-open="true"] { background: #d8cfba; color: #262b27; border-right: 32px solid #9f211c; }
+.gateFlat i { position: absolute; right: 10px; top: 85px; width: 7px; height: 32px; background: #262b27; }
+.gateFlat i[data-plate="true"] { width: 18px; height: 40px; background: #f0ca08; }
+.gateFlat[data-open="true"] i { display: none; }
 @media (max-width: 767px) { .heading { padding: .5rem .65rem; } .cameraControls, .experiment { padding-left: .65rem; padding-right: .65rem; } .viewport { min-height: 290px; flex-basis: 290px; } }

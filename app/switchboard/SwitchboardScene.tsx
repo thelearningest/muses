@@ -14,6 +14,7 @@ type Props = {
   onSwitch: (index: number) => void;
   onAvailability: (available: boolean) => void;
   onOrbit: () => void;
+  onView?: (view: ViewName) => void;
   className?: string;
 };
 type Rig = SceneHandle & { update: (repaired: boolean, lamps: boolean[], lastSwitch: number | null) => void };
@@ -22,6 +23,65 @@ const VIEWS: Record<ViewName, { position: [number, number, number]; target: [num
   lamps: { position: [0, 8.5, 6.2], target: [0, 3.7, 0] },
   controls: { position: [0, 5.9, 7.5], target: [0, 1.6, 2.25] },
 };
+
+// Both demo exhibits use the same interruptible, reduced-motion-aware approach.
+export function createInspectionCamera<T extends string>(
+  camera: THREE.PerspectiveCamera,
+  controls: OrbitControls,
+  render: () => void,
+  presets: Record<T, { position: [number, number, number]; target: [number, number, number] }>,
+  initialView: T,
+  onView: (view: T | "custom") => void,
+) {
+  let view: T | "custom" = initialView;
+  let frame = 0;
+  let interacting = false;
+  const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const cancel = () => { window.cancelAnimationFrame(frame); frame = 0; };
+  const setView = (next: T, animate = true) => {
+    cancel();
+    view = next;
+    onView(next);
+    const target = new THREE.Vector3(...presets[next].target);
+    const position = new THREE.Vector3(...presets[next].position).sub(target)
+      .multiplyScalar(Math.max(1, 1.1 / camera.aspect)).add(target);
+    const fromPosition = camera.position.clone();
+    const fromTarget = controls.target.clone();
+    const started = performance.now();
+    const duration = animate && !motion.matches ? 520 : 0;
+    const step = (now: number) => {
+      const progress = duration ? Math.min(1, Math.max(0, (now - started) / duration)) : 1;
+      const eased = progress * progress * (3 - 2 * progress);
+      camera.position.lerpVectors(fromPosition, position, eased);
+      controls.target.lerpVectors(fromTarget, target, eased);
+      controls.update();
+      render();
+      frame = progress < 1 ? window.requestAnimationFrame(step) : 0;
+    };
+    step(started);
+  };
+  const change = () => { if (interacting) { view = "custom"; onView("custom"); } render(); };
+  const start = () => { cancel(); interacting = true; };
+  const end = () => { interacting = false; };
+  const reduceMotion = () => { if (motion.matches && view !== "custom") setView(view, false); };
+  controls.addEventListener("change", change);
+  controls.addEventListener("start", start);
+  controls.addEventListener("end", end);
+  motion.addEventListener("change", reduceMotion);
+  return {
+    setView,
+    get view() { return view; },
+    get moving() { return frame !== 0; },
+    resize() { if (view !== "custom") setView(view, false); else render(); },
+    dispose() {
+      cancel();
+      controls.removeEventListener("change", change);
+      controls.removeEventListener("start", start);
+      controls.removeEventListener("end", end);
+      motion.removeEventListener("change", reduceMotion);
+    },
+  };
+}
 
 function buildExhibit(scene: THREE.Scene) {
   const charcoal = new THREE.MeshStandardMaterial({ color: 0x363932, roughness: .72 });
@@ -78,10 +138,12 @@ function buildExhibit(scene: THREE.Scene) {
   const lampHalos: THREE.Mesh[] = [];
   const lampLabels: THREE.Mesh[] = [];
   const lampPositions: [number, number][] = [[-1.25, -1.15], [1.25, -1.15], [-1.25, 1.15], [1.25, 1.15]];
+  const approachTargets: THREE.Object3D[] = [];
   lampPositions.forEach(([x, z], index) => {
     cylinder(scene, .012, .012, .72, x, 4.45, z);
     cylinder(scene, .1, .1, .15, x, 4.01, z, brass);
-    cylinder(scene, .19, .43, .32, x, 3.82, z);
+    const shade = cylinder(scene, .19, .43, .32, x, 3.82, z);
+    shade.userData.view = "lamps"; approachTargets.push(shade);
     const rim = new THREE.MeshStandardMaterial({ color: 0xb29240, roughness: .45, metalness: .3, emissive: 0xffd775, emissiveIntensity: 0 });
     cylinder(scene, .44, .44, .065, x, 3.64, z, rim); lampRims.push(rim);
     const diffuser = new THREE.MeshStandardMaterial({ color: 0xc5c1ad, emissive: 0xffd775, emissiveIntensity: 0, roughness: .42 });
@@ -96,7 +158,8 @@ function buildExhibit(scene: THREE.Scene) {
   });
 
   box(scene, 2.8, 1.22, 1.4, 0, .86, 2.25, stone);
-  box(scene, 3.6, .17, 1.82, 0, 1.54, 2.25, darkMetal);
+  const panel = box(scene, 3.6, .17, 1.82, 0, 1.54, 2.25, darkMetal);
+  panel.userData.view = "controls"; approachTargets.push(panel);
   box(scene, 3.42, .025, 1.65, 0, 1.637, 2.25, charcoal);
   box(scene, 2.45, .04, .04, 0, .66, 2.96, darkMetal);
   for (let i = 0; i < 9; i++) box(scene, .055, .22, .025, -.48 + i * .12, .92, 2.96, charcoal);
@@ -123,6 +186,7 @@ function buildExhibit(scene: THREE.Scene) {
 
   return {
     hitTargets,
+    approachTargets,
     update(repaired: boolean, lamps: boolean[], lastSwitch: number | null) {
       switches.forEach(({ group, lever, status, label: number }, i) => {
         const x = repaired ? (i % 2 === 0 ? -.7 : .7) : (i - 1.5) * .78;
@@ -151,13 +215,14 @@ function buildExhibit(scene: THREE.Scene) {
   };
 }
 
-export function SwitchboardScene({ ref, repaired, lamps, lastSwitch, onSwitch, onAvailability, onOrbit, className = "scene-mount" }: Props) {
+export function SwitchboardScene({ ref, repaired, lamps, lastSwitch, onSwitch, onAvailability, onOrbit, onView, className = "scene-mount" }: Props) {
   const mount = useRef<HTMLDivElement>(null);
   const rig = useRef<Rig | null>(null);
   const callback = useRef(onSwitch);
   const availability = useRef(onAvailability);
   const orbit = useRef(onOrbit);
-  useEffect(() => { callback.current = onSwitch; availability.current = onAvailability; orbit.current = onOrbit; }, [onSwitch, onAvailability, onOrbit]);
+  const viewCallback = useRef(onView);
+  useEffect(() => { callback.current = onSwitch; availability.current = onAvailability; orbit.current = onOrbit; viewCallback.current = onView; }, [onSwitch, onAvailability, onOrbit, onView]);
   useImperativeHandle(ref, () => ({ setView: (view) => rig.current?.setView(view) }), []);
 
   useEffect(() => {
@@ -195,61 +260,61 @@ export function SwitchboardScene({ ref, repaired, lamps, lastSwitch, onSwitch, o
     key.shadow.normalBias = .025; scene.add(key);
     const fill = new THREE.DirectionalLight(0xd3e2e0, 1.8); fill.position.set(5, 4, -4); scene.add(fill);
     const exhibit = buildExhibit(scene);
-    let view: ViewName = "overview";
     let contextLost = false;
     const render = () => { if (!contextLost) renderer.render(scene, camera); };
-    const setView = (next: ViewName) => {
-      view = next;
-      const preset = VIEWS[next];
-      const target = new THREE.Vector3(...preset.target);
-      // Keep the same object visible in a narrow viewport.
-      const position = new THREE.Vector3(...preset.position).sub(target).multiplyScalar(Math.max(1, 1.1 / camera.aspect)).add(target);
-      camera.position.copy(position); controls.target.copy(target); controls.update(); render();
-    };
+    const navigation = createInspectionCamera<ViewName>(camera, controls, render, VIEWS, "overview", (next) => {
+      if (next === "custom") orbit.current(); else viewCallback.current?.(next);
+    });
     const resize = () => {
       const { width, height } = element.getBoundingClientRect();
       if (!width || !height) return;
       renderer.setSize(width, height, false); camera.aspect = width / height; camera.updateProjectionMatrix();
-      setView(view);
+      navigation.resize();
     };
-    let interacting = false;
-    const changeOrbit = () => { if (interacting) orbit.current(); render(); };
-    const startOrbit = () => { interacting = true; };
-    const endOrbit = () => { interacting = false; };
-    controls.addEventListener("change", changeOrbit);
-    controls.addEventListener("start", startOrbit);
-    controls.addEventListener("end", endOrbit);
     const observer = new ResizeObserver(resize); observer.observe(element);
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     let down: { x: number; y: number; pointerId: number } | null = null;
-    const pointerDown = (event: PointerEvent) => { if (event.isPrimary) down = { x: event.clientX, y: event.clientY, pointerId: event.pointerId }; else down = null; };
-    const pointerUp = (event: PointerEvent) => {
-      const start = down; down = null;
-      if (!start || start.pointerId !== event.pointerId || Math.hypot(start.x - event.clientX, start.y - event.clientY) > 6 || contextLost) return;
+    const pointerDown = (event: PointerEvent) => { if (event.isPrimary && event.button === 0) down = { x: event.clientX, y: event.clientY, pointerId: event.pointerId }; else down = null; };
+    const hitAt = (event: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.set((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(exhibit.hitTargets, false)[0];
-      if (hit) callback.current(hit.object.userData.switchIndex as number);
+      return raycaster.intersectObjects([...exhibit.hitTargets, ...exhibit.approachTargets], false)[0];
+    };
+    const pointerUp = (event: PointerEvent) => {
+      const start = down; down = null;
+      if (!start || start.pointerId !== event.pointerId || Math.hypot(start.x - event.clientX, start.y - event.clientY) > 6 || contextLost) return;
+      const hit = hitAt(event);
+      if (!hit) return;
+      const index = hit.object.userData.switchIndex;
+      const destination = (hit.object.userData.view ?? "controls") as ViewName;
+      if (navigation.view !== destination) navigation.setView(destination);
+      else if (typeof index === "number" && !navigation.moving) callback.current(index);
+    };
+    const pointerMove = (event: PointerEvent) => {
+      if (down && Math.hypot(event.clientX - down.x, event.clientY - down.y) > 6) down = null;
+      renderer.domElement.style.cursor = event.buttons ? "grabbing" : hitAt(event) ? "pointer" : "grab";
     };
     const cancelPointer = () => { down = null; };
-    const loseContext = (event: Event) => { event.preventDefault(); contextLost = true; availability.current(false); };
+    const loseContext = (event: Event) => { event.preventDefault(); contextLost = true; navigation.dispose(); availability.current(false); };
     renderer.domElement.addEventListener("pointerdown", pointerDown);
     renderer.domElement.addEventListener("pointerup", pointerUp);
     renderer.domElement.addEventListener("pointercancel", cancelPointer);
+    renderer.domElement.addEventListener("pointermove", pointerMove);
     renderer.domElement.addEventListener("webglcontextlost", loseContext);
     rig.current = {
-      setView,
+      setView: navigation.setView,
       update(nextRepaired, nextLamps, nextSwitch) { exhibit.update(nextRepaired, nextLamps, nextSwitch); render(); },
     };
     exhibit.update(false, [false, false, false, false], null);
     resize(); availability.current(true);
     return () => {
-      rig.current = null; observer.disconnect(); controls.removeEventListener("change", changeOrbit); controls.removeEventListener("start", startOrbit); controls.removeEventListener("end", endOrbit); controls.dispose();
+      rig.current = null; observer.disconnect(); navigation.dispose(); controls.dispose();
       renderer.domElement.removeEventListener("pointerdown", pointerDown);
       renderer.domElement.removeEventListener("pointerup", pointerUp);
       renderer.domElement.removeEventListener("pointercancel", cancelPointer);
+      renderer.domElement.removeEventListener("pointermove", pointerMove);
       renderer.domElement.removeEventListener("webglcontextlost", loseContext);
       exhibit.dispose(); key.shadow.dispose(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     };

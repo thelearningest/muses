@@ -1217,6 +1217,8 @@ button:disabled {
 }
 
 .artifact-gallery-switchboard { min-height: 760px; }
+.artifact-gallery:has(.gate-inspector) { min-height: 760px; }
+.artifact-gate:not(.artifact-generated) { align-items: stretch; min-height: 650px; }
 .artifact-switchboard:not(.artifact-generated) { align-items: stretch; min-height: 650px; }
 
 .artifact-visual {

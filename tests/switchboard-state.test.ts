@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as THREE from "three";
+import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { createInspectionCamera } from "../app/switchboard/SwitchboardScene";
 import { initialSwitchboardState, switchboardReducer } from "../app/switchboard/state";
 import { finishSwitchboardConsequence, restoreGameProgress } from "../app/Game";
 
@@ -85,5 +88,70 @@ describe("bounded switchboard consequences", () => {
     expect(oldSave.xp).toBe(70);
     expect(oldSave.switchboardChoice).toBeUndefined();
     expect(restoreGameProgress(null, quests, maxXp, true)).toEqual({ version: 1, currentQuest: 0, phase: "inspect", xp: 0, completed: [], principles: [] });
+  });
+});
+
+
+describe("inspection camera", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+  function setup(reduced = false) {
+    const frames = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    const listeners = new Map<string, () => void>();
+    const motion = { matches: reduced, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    vi.stubGlobal("window", { matchMedia: () => motion, requestAnimationFrame: (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; }, cancelAnimationFrame: (id: number) => frames.delete(id) });
+    vi.spyOn(performance, "now").mockReturnValue(0);
+    const camera = new THREE.PerspectiveCamera(36, 1.5, .1, 100);
+    const controls = { target: new THREE.Vector3(), update: vi.fn(), addEventListener: (event: string, callback: () => void) => listeners.set(event, callback), removeEventListener: (event: string) => listeners.delete(event) } as unknown as OrbitControls;
+    const onView = vi.fn();
+    const presets = { overview: { position: [8, 6, 10], target: [0, 2, 0] }, detail: { position: [0, 4, 6], target: [0, 2, 2] } } satisfies Record<string, { position: [number, number, number]; target: [number, number, number] }>;
+    const navigation = createInspectionCamera<keyof typeof presets>(camera, controls, vi.fn(), presets, "overview", onView);
+    const tick = (time: number) => { const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(time)); };
+    return { camera, controls, navigation, listeners, frames, tick, onView, motion };
+  }
+  it("animates an approach and cancels stale motion when stepping back", () => {
+    const { camera, navigation, frames, tick } = setup();
+    navigation.resize();
+    expect(camera.position.toArray()).toEqual([8, 6, 10]);
+    navigation.setView("detail");
+    tick(260);
+    expect(camera.position.x).toBeCloseTo(4);
+    navigation.setView("overview");
+    expect(frames.size).toBe(1);
+    tick(520);
+    expect(camera.position.toArray()).toEqual([8, 6, 10]);
+    expect(frames.size).toBe(0);
+    navigation.dispose();
+  });
+  it("snaps without animation for reduced motion and fits narrow screens", () => {
+    const { camera, controls, navigation, frames } = setup(true);
+    camera.aspect = .55;
+    navigation.setView("detail");
+    expect(controls.target.toArray()).toEqual([0, 2, 2]);
+    expect(camera.position.toArray()).toEqual([0, 6, 10]);
+    expect(frames.size).toBe(0);
+    navigation.dispose();
+  });
+  it("lets orbit interrupt the camera and preserves that custom view on resize", () => {
+    const { camera, navigation, listeners, frames, onView } = setup();
+    navigation.setView("detail");
+    listeners.get("start")!();
+    expect(frames.size).toBe(0);
+    camera.position.set(3, 4, 5);
+    listeners.get("change")!();
+    listeners.get("end")!();
+    navigation.resize();
+    expect(camera.position.toArray()).toEqual([3, 4, 5]);
+    expect(onView).toHaveBeenLastCalledWith("custom");
+    navigation.dispose();
+    expect(listeners.size).toBe(0);
+  });
+  it("removes a pending frame on disposal", () => {
+    const { navigation, frames, motion } = setup();
+    navigation.setView("detail");
+    expect(frames.size).toBe(1);
+    navigation.dispose();
+    expect(frames.size).toBe(0);
+    expect(motion.removeEventListener).toHaveBeenCalled();
   });
 });

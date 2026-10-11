@@ -68,9 +68,9 @@ test("ships six quests, local progress, 3D inspection, and narration", async () 
   assert.match(game, /<GateInspector3D/);
   assert.match(inspector, /WebGLRenderer/);
   assert.match(inspector, /OrbitControls/);
-  assert.match(inspector, /Handle cue/);
-  assert.match(inspector, /Push motion/);
-  assert.match(inspector, /gate-inspector-fallback/);
+  assert.match(inspector, /Approach handle/);
+  assert.match(inspector, /Look at hinges/);
+  assert.match(inspector, /3D is unavailable\. The gate controls still work/);
   assert.match(game, /false-handle-gate\.png/);
   assert.match(game, /prefers-reduced-motion|Principle journal/i);
   assert.match(page, /<BookRpgApp\b/);

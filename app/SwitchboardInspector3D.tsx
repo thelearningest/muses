@@ -6,9 +6,9 @@ import { initialSwitchboardState, LAMP_POSITIONS, switchboardReducer } from "./s
 import styles from "./SwitchboardInspector3D.module.css";
 
 const VIEWS: { id: ViewName; label: string }[] = [
-  { id: "overview", label: "Whole exhibit" },
-  { id: "lamps", label: "Lamp layout" },
-  { id: "controls", label: "Control layout" },
+  { id: "overview", label: "Step back" },
+  { id: "lamps", label: "Look at lamps" },
+  { id: "controls", label: "Approach panel" },
 ];
 type Props = { repaired: boolean; revealed: boolean };
 
@@ -34,7 +34,7 @@ function SwitchboardInteraction({ repaired, revealed }: Props) {
         {available && <button type="button" onClick={() => { setFlatView(!flatView); setView("overview"); }}>{flatView ? "Use 3D view" : "Use 2D view"}</button>}
       </div>
       <div className={styles.viewport}>
-        {!flatView && <SwitchboardScene ref={scene} repaired={repaired} lamps={state.lamps} lastSwitch={state.lastSwitch} onSwitch={toggle} onAvailability={setAvailable} onOrbit={() => setView("custom")} className={styles.sceneMount} />}
+        {!flatView && <SwitchboardScene ref={scene} repaired={repaired} lamps={state.lamps} lastSwitch={state.lastSwitch} onSwitch={toggle} onAvailability={setAvailable} onView={setView} onOrbit={() => setView("custom")} className={styles.sceneMount} />}
         {!show3D && <div className={styles.fallback}>
           <p>{available ? "Lamp arrangement, viewed from above" : "3D is unavailable. Use the controls below."}</p>
           <div className={styles.lamps} role="img" aria-label={repaired ? `Four lamps in a square. ${state.lamps.filter(Boolean).length} on.` : "Four lamps in a square, with no visible on/off feedback."}>
@@ -43,8 +43,9 @@ function SwitchboardInteraction({ repaired, revealed }: Props) {
         </div>}
       </div>
       <div className={styles.cameraControls} aria-label="Switchboard camera views">
-        <p>{show3D ? "Drag to rotate · scroll to zoom" : "Same controls, viewed in 2D"}</p>
+        <p role="status">{show3D ? view === "controls" ? "Tap a switch on the panel to try it." : view === "lamps" ? "Look at the lamp arrangement. Approach the panel to try its switches." : "Tap the panel or a lamp to approach it." : "Same controls, viewed in 2D"}</p>
         <div>{VIEWS.map(({ id, label }) => <button type="button" key={id} aria-pressed={show3D && view === id} disabled={!show3D} onClick={() => changeView(id)}>{label}</button>)}</div>
+        {show3D && <small>Drag to look around · pinch or scroll to zoom</small>}
       </div>
       <div className={styles.experiment}>
         <div className={styles.experimentHeading}><strong>Try the switches</strong><button type="button" onClick={() => dispatch({ type: "reset", repaired })}>Reset lights</button></div>

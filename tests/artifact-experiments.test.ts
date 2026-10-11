@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { gateExperimentReducer } from "../app/GateInspector3D";
 import { initialExperiment, updateExperiment, type Action, type ArtifactKind } from "./manual/3d-preview/experiments";
 function experiment(kind: ArtifactKind, repaired: boolean) {
   let state = initialExperiment(kind);
@@ -53,5 +54,24 @@ describe("four-scene preview", () => {
   it("starts a fresh experiment on reset", () => {
     const kiosk = experiment("kiosk", true); kiosk.act({ type: "stop", index: 1 }); kiosk.act({ type: "wrong-turn" });
     expect(kiosk.act({ type: "reset" })).toEqual(initialExperiment("kiosk"));
+  });
+});
+
+
+describe("gate experiment", () => {
+  it("blocks pulling, opens inward when pushed, and allows another attempt after closing", () => {
+    const closed = { open: false, notice: "Try the gate." };
+    const pulled = gateExperimentReducer(closed, "pull");
+    expect(pulled.open).toBe(false);
+    expect(pulled.notice).toContain("stays shut");
+    const pushed = gateExperimentReducer(pulled, "push");
+    expect(pushed.open).toBe(true);
+    expect(pushed.notice).toContain("inward");
+    expect(gateExperimentReducer(pushed, "push").open).toBe(true);
+    expect(gateExperimentReducer(pushed, "pull").open).toBe(true);
+    const reset = gateExperimentReducer(pushed, "close");
+    expect(reset.open).toBe(false);
+    expect(gateExperimentReducer(reset, "pull").open).toBe(false);
+    expect(closed).toEqual({ open: false, notice: "Try the gate." });
   });
 });
