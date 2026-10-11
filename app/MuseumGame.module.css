@@ -90,3 +90,31 @@
 
 .returnGuide { position: absolute; bottom: 88px; left: 24px; display: flex; align-items: center; gap: 12px; padding: 12px; max-width: calc(100% - 48px); background: #f4efdf; color: #29322d; border-radius: 8px; box-shadow: 0 5px 22px #0002; }
 @media (max-width: 700px) { .returnGuide { top: 162px; bottom: auto; left: 12px; max-width: calc(100% - 24px); font-size: 12px; } }
+
+/* After-hours navigation stays quiet so the illuminated exhibits lead the eye. */
+.hud, .objective {
+  background: #17232bed;
+  border: 1px solid #ab96794d;
+  border-radius: 8px;
+  color: #f4eddf;
+  text-shadow: none;
+  box-shadow: 0 8px 30px #0002;
+}
+.hud { padding: 12px 16px; }
+.objective { top: 122px; padding: 14px 16px; }
+.progress { border-left-color: #ab96794d; }
+.brand > span, .objective > span { color: #d7c39d; }
+.hud nav button { color: #f4eddf; background: #ffffff08; border-color: #ab967940; }
+.hud nav button:hover, .hud button.musicToggle:hover { background: #ffffff16; }
+.hud button:focus-visible { outline-color: #ecd098; }
+.navigationHint { color: #f4eddf; font-weight: 500; }
+.navigationHint > span, .navigationHint button {
+  background: #17232bed;
+  border-color: #ab96794d;
+  color: #f4eddf;
+}
+.navigationHint button:hover { background: #293741; }
+@media (max-width: 700px) {
+  .hud { padding: 10px; }
+  .objective { top: 154px; }
+}
