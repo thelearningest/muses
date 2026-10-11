@@ -1,0 +1,8 @@
+.narration { padding: 14px 0; margin: 0 0 18px; border-top: 1px solid #d5cfba; border-bottom: 1px solid #d5cfba; }
+.controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.controls button { min-height: 44px; }
+.disclosure { font-size: 11px; color: #555947; }
+.transcript { margin-top: 10px; }
+.transcript summary { cursor: pointer; font-size: 12px; color: #555947; padding: 5px 0; }
+.transcript p { margin-bottom: 0; }
+.status { color: #70401f; font-size: 12px; }

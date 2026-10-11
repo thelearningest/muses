@@ -1,7 +1,7 @@
 {
   "version": 1,
   "model": "gpt-4o-mini-tts-2025-12-15",
-  "generatedAt": "2026-10-11T04:46:34.557Z",
+  "generatedAt": "2026-10-11T05:03:59.608Z",
   "clips": [
     {
       "id": "gate-observation",
@@ -32,18 +32,214 @@
       "model": "gpt-4o-mini-tts"
     },
     {
-      "id": "welcome",
+      "id": "welcome-previous",
       "text": "Welcome to the City of Misfit Things! Come on in. There are curious little surprises everywhere. Try an object, see what happens, and discover what you can change. Ready? Let's explore!",
       "voice": "cedar",
       "model": "gpt-4o-mini-tts-2025-12-15",
       "src": "/audio/narration/cb60aaa7390ca369a69c2017de86cfda562b52e0e8ca5c4e1ff245d700cb77c1.mp3"
     },
     {
-      "id": "welcome",
+      "id": "welcome-previous",
       "text": "Welcome to the City of Misfit Things! Come on in. There are curious little surprises everywhere. Try an object, see what happens, and discover what you can change. Ready? Let's explore!",
       "voice": "marin",
       "model": "gpt-4o-mini-tts-2025-12-15",
       "src": "/audio/narration/b63a70e0d8a2acd806c0f79e84ef660347ac108d45dd1482d1e676393d5cd8b5.mp3"
+    },
+    {
+      "id": "welcome",
+      "text": "Oh! You're HERE! Welcome to the City of Misfit Things! A door that tricks you. A switch that keeps you guessing. And YOU get to figure it all out! Go on... give something a try. Push it. Pull it. See what surprises you! Ready? Let's GO!",
+      "voice": "cedar",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/f103ece945c8eb216d027cfbb368262804082951c62c6ed83110918523ee430f.mp3"
+    },
+    {
+      "id": "welcome",
+      "text": "Oh! You're HERE! Welcome to the City of Misfit Things! A door that tricks you. A switch that keeps you guessing. And YOU get to figure it all out! Go on... give something a try. Push it. Pull it. See what surprises you! Ready? Let's GO!",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/9b493a7d39f562eca0bde67a79526039cdb0be9607d542d400ca12bace6a960d.mp3"
+    },
+    {
+      "id": "gallery-false-handles-inspect",
+      "text": "Ah, the Gate of False Handles! Such a confident-looking handle... and three very confused visitors. Before you touch it, what is your hand expecting to do? Try the gate. Watch what happens, and notice who gets blamed when it refuses to open.",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/895e77d1faf191a550c7639bab4f89a69f22f497aaed59fb84b0e96d4883eda3.mp3"
+    },
+    {
+      "id": "gallery-false-handles-diagnose",
+      "text": "Interesting, isn't it? Your hand had a plan before you even thought about it. Compare what the handle suggests with how the gate actually opens. What is causing the confusion?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/3a3b380554491767144ab3fcb42730ee6f1d25497715d9df3bf1b6a6a2ff5388.mp3"
+    },
+    {
+      "id": "gallery-false-handles-repair",
+      "text": "You've spotted the contradiction! Now imagine someone meeting this gate for the very first time. What could you change so their hand finds the right action straight away? Choose your repair.",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/4ad0ac2dfa9f5a233d9adab1b74b4b0c42be6b6bbbc3358649359ca3f68097d3.mp3"
+    },
+    {
+      "id": "gallery-false-handles-reward",
+      "text": "There it is! One push, and they're through! The flat plate gives the hand a clear clue. That clue is a signifier. The gate could always open, but now people can discover how. Step back into the room and try the difference!",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/a4244ad459e3d8cf16c6690c9c5bcb7d2f31f02ad8456010ea41ca695ef1aa8c.mp3"
+    },
+    {
+      "id": "gallery-constellation-controls-inspect",
+      "text": "Four lamps overhead. Four switches down here. Surely this will be easy... or will it? Pick a lamp, then try to light just that one. Watch the layout, and notice what tells you whether your press worked.",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/f300a9a3f886847f18a16dd3cdd6d3edecd8b678cb18810ab298ba24277f2d44.mp3"
+    },
+    {
+      "id": "gallery-constellation-controls-diagnose",
+      "text": "A little guessing game, isn't it? Look from the switches to the lamps. What makes their relationship difficult to read? And after you press a switch, what tells you what happened?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/3920050049963ac4e36448d2b7def638130e95f5e00c5743a1cf47da904ce427.mp3"
+    },
+    {
+      "id": "gallery-constellation-controls-repair",
+      "text": "Now we're getting somewhere! The keeper needs to choose a lamp and immediately understand the result. Which design would make that possible? Pick a repair, then watch what happens on the next shift.",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/b743de6a459f0a3d1760319d03beaac3711fe13345fd4b61b4eea8d3bdb20b9d.mp3"
+    },
+    {
+      "id": "gallery-constellation-controls-reward",
+      "text": "Aha! The switches now echo the lamps, and every press shows its result. That's mapping and feedback working together. Less guessing, more understanding! Go back and try choosing a single lamp again.",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/a3016d1e31a1ed0606c1b6477e523eb35260a85bde14c21cc266c2e2ebc30146.mp3"
+    },
+    {
+      "id": "gallery-vanishing-instructions-inspect",
+      "text": "Welcome to a locker with a rather disappearing personality! Six instructions, four seconds... and then they're gone. Try storing the parcel. Let yourself be interrupted. When you come back, can you tell what you've done and what comes next?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/6db4c478f22d53c96687b17fd7b306b26c4cc26eaaf1ced91ef876b791112ab3.mp3"
+    },
+    {
+      "id": "gallery-vanishing-instructions-diagnose",
+      "text": "Wait... where were we? The courier knew what they wanted to do. Watch what the locker asks them to keep in their head, especially after an interruption. What is the design making unnecessarily difficult?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/47dad86b049004615a288c722c5625151a539bf16c5fc4ebe1fc65c5f02831fc.mp3"
+    },
+    {
+      "id": "gallery-vanishing-instructions-repair",
+      "text": "Let's give that courier a fair chance! Imagine returning halfway through the job. Which repair would help you understand your progress and continue from the right place?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/f4e8506af554e44c06b89a535f0e21df93a8a57a8b5ca74cb746dc01bd517c2b.mp3"
+    },
+    {
+      "id": "gallery-vanishing-instructions-reward",
+      "text": "Oh, that's a relief! The steps stay visible, and the locker remembers where you stopped. We call this knowledge in the world. The design carries the details so your memory doesn't have to. Try interrupting the task again!",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/3618a65b3d156c434f392532aca7ea9b300e651710a5a6377d0676e23bf10553.mp3"
+    },
+    {
+      "id": "gallery-four-constraints-inspect",
+      "text": "Step into the foundry! Four pieces, four openings, and one guardian seal to assemble. The markings look helpful... but let's see what the machine actually allows. Try a piece in the wrong place. When do you find out something is wrong?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/fc378434b5b69ec0eb0b72dfffce0cee6983a0be531cefb71c188ce978aa44a8.mp3"
+    },
+    {
+      "id": "gallery-four-constraints-diagnose",
+      "text": "Now that's curious. A marking can suggest a match, but does the opening enforce it? Compare what the apprentice is shown with what the machine lets them do. Where does this design go wrong?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/8178910bd68dde5e0593b18dc7b4f3c59dcb2cdee7f57f14d25f25e031f556f2.mp3"
+    },
+    {
+      "id": "gallery-four-constraints-repair",
+      "text": "Time to make the pieces do some of the thinking! Which repair would make the intended match clear and stop a wrong piece from fitting? Think about what happens before the machine starts.",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/21f864eb25bd5aef260c110ae28d8e320612b58f262b6475d1f25406d3947217.mp3"
+    },
+    {
+      "id": "gallery-four-constraints-reward",
+      "text": "Yes! The wrong piece no longer fits. Those are constraints in action. Fit, familiar marks, and position help the apprentice choose, and the final empty space offers another clue. Try assembling the seal now!",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/fd69ca2d8a91ec502ef86f24e0d707fc3451abe6525d9be900085cfa109deb77.mp3"
+    },
+    {
+      "id": "gallery-error-tribunal-diagnose",
+      "text": "Let's reconstruct the moment. What was the expert trying to achieve, and what did their hand actually do? Was the goal wrong, or did the action go astray? Follow the evidence before choosing an explanation.",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/434df47d303d2222853164ab1ca97f9966a0c03ea08306696f7647b538c08e27.mp3"
+    },
+    {
+      "id": "gallery-error-tribunal-repair",
+      "text": "We've found the slip. Now let's design for a person whose attention can be interrupted. Which repair would make accidental deletion harder and help them recover if it still happened?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/c92bea75d2bd8912ffdf2c43b6579b5ced22b6832626a462effaa0eec1e57e0a.mp3"
+    },
+    {
+      "id": "gallery-error-tribunal-reward",
+      "text": "Now there's a console that helps! Delete is separated from restore, consequences are clearer, and Undo gives the expert a way back. Design for error means anticipating a slip and limiting the damage. Try the repaired controls!",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/6c77efd5fd096a8a699e969f0ad88bf0b2cb8a7573b51ab2b6b01ff07967fd4e.mp3"
+    },
+    {
+      "id": "gallery-double-diamond-inspect",
+      "text": "Our final commission! The director wants a bigger help button. A neat request... but is it the right one? Try planning a route. Watch how stops change it, what happens after a wrong turn, and whether everyone can reach the controls.",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/9866ef08d5f87c488c2b231ab390bc9172f2a708b91d665de8be4e1825adc1a2.mp3"
+    },
+    {
+      "id": "gallery-double-diamond-diagnose",
+      "text": "Hold that redesign for a moment! Compare the director's request with what visitors actually struggle to do. What problem would you describe if you started with their experience?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/4aa3929c66212b58fa010fa43cc79f8115d0ce92b76cbee8edae935955eef9ae.mp3"
+    },
+    {
+      "id": "gallery-double-diamond-repair",
+      "text": "Now we have a problem worth solving! How would you explore possible designs and find out whether they work for people with different abilities? Choose the process that lets real use shape the result.",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/229caa1f50c2853a60e25f58651e1fef78e34e5844f0036c7fe8314575bd6888.mp3"
+    },
+    {
+      "id": "gallery-double-diamond-reward",
+      "text": "You did it! All six galleries repaired, and one final lesson: watch people, question the first proposed fix, explore ideas, and test what works. That's human-centered design. The museum is yours to explore. Go and see what your changes have made possible!",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/872daff6dd56d04aea5b44f83453b6de4793b293c33402c3e359a68b42c40aa9.mp3"
+    },
+    {
+      "id": "gallery-constellation-controls-spatial-map",
+      "text": "Watch the keeper's hand. Straight to the matching switch... and the right lamp lights up! The layout carries the relationship, and the light confirms the result. No lookup chart needed. Ready to keep this design?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/662b479d6c8971c6eb63b90e602c45034ec4f68a03231e56749a8f83f9b64e7d.mp3"
+    },
+    {
+      "id": "gallery-constellation-controls-manual-labels",
+      "text": "The chart helps the keeper find the switch. So far, so good... but now it's the next shift, and the chart has been moved. Those letters suddenly tell us very little! Let's try putting the relationship into the layout itself.",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/bd19684285487caba87eeac05fb2271a7af6ae1748dafb79ebf8f4fab881cbe0.mp3"
+    },
+    {
+      "id": "gallery-error-tribunal-inspect",
+      "text": "An interrupted expert. Two neighboring buttons. And one very expensive surprise! They meant to restore the archive, but pressed delete. Look closely at the console. What made that action easy, and what could they do after it happened?",
+      "voice": "marin",
+      "model": "gpt-4o-mini-tts-2025-12-15",
+      "src": "/audio/narration/c89702c704ef6e7713c0ccfc62ebd0aa22c5cad81d902a3457e4856c593f4713.mp3"
     }
   ]
 }

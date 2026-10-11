@@ -2,17 +2,21 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile, access, unlink } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { NARRATION_MODEL, NARRATION_VOICES, NARRATION_INSTRUCTIONS, NARRATION_SAMPLES } from "../app/narration/catalog.mjs";
+import { GALLERY_NARRATION_SAMPLES } from "../app/narration/gallery.mjs";
 
 const root = new URL("../", import.meta.url);
 const output = new URL("public/audio/narration/", root);
 const receipts = new URL("outputs/narration/receipts/", root);
 const write = process.argv.includes("--write");
+const collection = process.argv.find(argument => argument.startsWith("--collection="))?.slice(13) ?? "preview";
+if (!["preview", "gallery"].includes(collection)) throw new Error("Choose --collection=preview or --collection=gallery");
+const catalog = collection === "gallery" ? GALLERY_NARRATION_SAMPLES : NARRATION_SAMPLES;
 const requestedVoice = process.argv.find(argument => argument.startsWith("--voice="))?.slice(8);
 if (requestedVoice && !NARRATION_VOICES.includes(requestedVoice)) throw new Error("Choose --voice=cedar or --voice=marin");
-const voices = requestedVoice ? [requestedVoice] : NARRATION_VOICES;
+const voices = requestedVoice ? [requestedVoice] : collection === "gallery" ? ["marin"] : NARRATION_VOICES;
 const requestedSample = process.argv.find(argument => argument.startsWith("--sample="))?.slice(9);
-if (requestedSample && !NARRATION_SAMPLES.some(sample => sample.id === requestedSample)) throw new Error("Choose a sample ID from NARRATION_SAMPLES for --sample.");
-const samples = requestedSample ? NARRATION_SAMPLES.filter(sample => sample.id === requestedSample) : NARRATION_SAMPLES;
+if (requestedSample && !catalog.some(sample => sample.id === requestedSample)) throw new Error("Choose a sample ID from the selected collection for --sample.");
+const samples = requestedSample ? catalog.filter(sample => sample.id === requestedSample) : catalog;
 // Dry runs never read a key or call the API. Generation requires --write.
 const clips = samples.flatMap(sample => voices.map(voice => {
   const request = { model: NARRATION_MODEL, voice, input: sample.text, instructions: sample.instructions ?? NARRATION_INSTRUCTIONS, response_format: "mp3" };

@@ -6,6 +6,9 @@ import { finishSwitchboardConsequence, restoreGameProgress, SWITCHBOARD_OUTCOMES
 import { MuseumWorld, type MuseumWorldHandle } from "./MuseumWorld";
 import { GALLERIES } from "./museum/architecture";
 import { exhibitControls, initialExhibit, reduceExhibit, type ExhibitAction } from "./museum/experiments";
+import { MuseumNarration } from "./narration/MuseumNarration";
+import { NARRATION_SAMPLES } from "./narration/catalog.mjs";
+import { getGalleryNarration } from "./narration/gallery.mjs";
 import styles from "./MuseumGame.module.css";
 
 const SAVE_KEY = "design-warden-progress:v2:city-of-misfit-things";
@@ -149,6 +152,9 @@ export function MuseumGame({ quests, onExit, guidedView }: { quests: Quest[]; on
   const phase = progress.phase;
   const outcome = isCurrent && phase === "consequence" && progress.switchboardChoice ? SWITCHBOARD_OUTCOMES[progress.switchboardChoice] : null;
   const heading = overlay === "intro" ? "City of Misfit Things" : overlay === "map" ? "Find your next room" : overlay === "journal" ? "Your field journal" : overlay === "pause" ? "Take a moment" : quest.title;
+  const narrationSample = overlay === "intro" ? NARRATION_SAMPLES.find(sample => sample.id === "welcome")
+    : overlay === "exhibit" ? getGalleryNarration(quest.id, { phase, completed: completed[selected], isCurrent, consequence: progress.switchboardChoice }) : null;
+  const nearbyNarration = nearby === null ? null : getGalleryNarration(quests[nearby].id, { phase: "inspect", completed: completed[nearby], isCurrent: nearby === progress.currentQuest });
 
   return <main className={styles.museum} aria-label="City of Misfit Things, walkable museum">
     <MuseumWorld ref={world} states={states} completed={completed} paused={overlay !== null}
@@ -167,6 +173,7 @@ export function MuseumGame({ quests, onExit, guidedView }: { quests: Quest[]; on
         <div className={styles.panelHeading}><span>{completed[nearby] ? "REPAIRED EXHIBIT" : "TRY THE EXHIBIT"}</span><strong>{GALLERIES[nearby].name}</strong></div>
         <p role="status" aria-live="polite">{states[nearby].notice}</p>
         {experimentButtons(nearby)}
+        {nearbyNarration && <MuseumNarration key={nearbyNarration.id} sample={nearbyNarration} />}
         <button type="button" className={styles.primary} onClick={() => openExhibit(nearby)}>{completed[nearby] ? "Read field notes" : "Investigate & repair"}<kbd>E</kbd></button>
       </aside>}
       {states[5].wrongTurn && completed[5] && <div className={styles.returnGuide}><span>You left your planned route.</span><button type="button" onClick={() => act(5, { type: "return" })}>Return to entrance</button></div>}
@@ -178,6 +185,7 @@ export function MuseumGame({ quests, onExit, guidedView }: { quests: Quest[]; on
     <dialog ref={dialog} className={`${styles.dialog} ${overlay === "exhibit" ? styles.exhibitDialog : ""}`} aria-labelledby="museum-dialog-heading" onCancel={(event) => { event.preventDefault(); closeOverlay(); }}>
       <div className={styles.dialogTop}><span>{overlay === "exhibit" ? `GALLERY ${quest.number}` : "CITY OF MISFIT THINGS"}</span><button type="button" aria-label="Close panel and return to museum" onClick={closeOverlay}>×</button></div>
       <h1 id="museum-dialog-heading">{heading}</h1>
+      {narrationSample && <MuseumNarration key={narrationSample.id} sample={narrationSample} />}
       {overlay === "intro" && <>
         <p className={styles.lead}>A museum full of things that almost work. Walk through six galleries, try the objects, and discover what a better design feels like.</p>
         <div className={styles.introSteps}><div><strong>01</strong><span>Walk into a room</span></div><div><strong>02</strong><span>Try things yourself</span></div><div><strong>03</strong><span>Repair what misleads</span></div></div>

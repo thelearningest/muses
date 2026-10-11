@@ -1,4 +1,12 @@
-# Connect saved narration to the museum
+# Saved museum narration
+
+The 3D museum uses Marin for its welcome, nearby exhibit controls, and all six exhibit panels. Each gallery has observation, diagnosis, repair, and discovery clips. The switchboard also has one clip for each experiment outcome. Play/pause and Stop are explicit controls, with a collapsible transcript. Changing stage, leaving an exhibit, closing a panel, or entering the guided view unmounts the narrator and stops its audio.
+
+Gallery scripts live in `gallery.mjs`. Their delivery keeps the welcome's animated inventor character while giving questions more room to breathe. Future rooms expose only their observation narration; repaired rooms can explain the design principle. The accessible guided view still uses its existing device narration.
+
+Run `node scripts/generate-narration.mjs --collection=gallery` for a dry run, then add `--write` to save gallery clips. This collection defaults to Marin to avoid generating unused voices. Add `--sample=<id>` for one revised line. Keep the gallery text and its saved recording in sync.
+
+## Connect other dialogue
 
 This module is independent of the museum scene. It plays saved OpenAI clips by matching the narration text and selected voice. Lines without a saved clip use the browser's voice. Neither path calls a paid API during playback.
 
@@ -30,7 +38,7 @@ Show `narration.error` when playback fails. Display `AI-generated narration` nea
 
 ## Generate clips after dialogue is ready
 
-1. Edit `NARRATION_SAMPLES` in `catalog.mjs`. Use a unique ID and the exact dialogue text passed to the hook. Add `instructions` to a sample to override the default delivery. The welcome uses an excited, playful delivery; the exhibit samples use a calmer guide.
+1. Edit `NARRATION_SAMPLES` in `catalog.mjs`. Use a unique ID and the exact dialogue text passed to the hook. Add `instructions` to a sample to override the default delivery. The welcome uses an exaggerated theatrical character performance. The previous welcome take stays available for comparison, and the exhibit samples use a calmer guide.
 2. Preview the work with `node scripts/generate-narration.mjs`. This dry run makes no API request.
 3. Run `node scripts/generate-narration.mjs --write --voice=cedar` to generate that voice, or omit `--voice` to generate Cedar and Marin.
 4. Open `/voice-preview` and listen. Pause, resume, and change scenes to check playback.
@@ -41,7 +49,7 @@ The script reads `OPENAI_API_KEY` from the process environment or the existing `
 
 Each run is limited to 30 new clips and 10,000 input characters. Paid requests are sequential, have a 60-second timeout, and have no automatic retry. A receipt under ignored `outputs/narration/receipts/` prevents repeating a request whose outcome is uncertain. Completed requests remove their receipts. If a request fails, inspect whether its audio file exists and reconcile the charge before removing that request's `.pending` receipt for an intentional retry.
 
-The three initial lines are audition samples. Final museum dialogue and generated-book narration remain separate integration work. The generator is local only; there is no public endpoint that spends API credit.
+The preview collection contains audition samples; the gallery collection supplies the museum's spoken companion scripts. Generated-book narration remains separate integration work. The generator is local only; there is no public endpoint that spends API credit.
 
 ## Model lifetime
 
