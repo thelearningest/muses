@@ -1,4 +1,4 @@
-# Playable Books
+# muses
 
 A browser RPG studio that turns an authorized PDF into a source-grounded learning game. The bundled six-quest example remains playable without external services. New books use a resumable, temporary pipeline designed for large scanned PDFs.
 

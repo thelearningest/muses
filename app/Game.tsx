@@ -24,6 +24,7 @@ type Progress = {
   xp: number;
   completed: string[];
   principles: string[];
+  encounters?: string[];
   switchboardChoice?: "spatial-map" | "manual-labels";
 };
 
@@ -499,6 +500,7 @@ export function restoreGameProgress(value: unknown, quests: readonly Pick<Quest,
     xp: Number.isFinite(Number(saved.xp)) ? Math.max(0, Math.min(maxXp, Number(saved.xp))) : 0,
     completed: Array.isArray(saved.completed) ? saved.completed.filter((id) => quests.some((quest) => quest.id === id)) : [],
     principles: Array.isArray(saved.principles) ? saved.principles.filter((id) => quests.some((quest) => quest.id === id)) : [],
+    ...(isDemo && Array.isArray(saved.encounters) ? { encounters: [...new Set(saved.encounters.filter((id) => quests.some((quest) => quest.id === id)))] } : {}),
     ...(switchboardChoice ? { switchboardChoice } : {}),
   };
 }
@@ -578,16 +580,12 @@ function ArtifactDisplay({ quest, phase }: { quest: Quest; phase: Phase }) {
 
   if (quest.visual) {
     return (
-      <figure className="artifact-frame" aria-labelledby="artifact-caption">
+      <figure className="artifact-frame" aria-label={quest.visual.title}>
         <div className={`${className} artifact-generated`}>
           <Suspense fallback={<div className="generated-artifact-loading">Loading the scene…</div>}>
             <GeneratedArtifact visual={quest.visual} revealed={revealed} repaired={repaired} />
           </Suspense>
         </div>
-        <figcaption id="artifact-caption">
-          <span>{quest.gallery}</span>
-          <span>Design reference · image unchanged</span>
-        </figcaption>
       </figure>
     );
   }
@@ -1189,7 +1187,7 @@ function GuidedGame({ game, onExit }: { game?: GamePackage; onExit?: () => void 
           <header className="intro-header">
             <div className="brand-mark">
               <span>{generated ? "Learn by playing" : "Museum"}</span>
-              <strong>{generated ? "Playable Books" : "Misfit Things"}</strong>
+              <strong>{generated ? "muses" : "Misfit Things"}</strong>
             </div>
             <div className="intro-header-tools">
               <span className="intro-edition">{quests.length} quests · Progress saved in this browser</span>
@@ -1310,7 +1308,7 @@ function GuidedGame({ game, onExit }: { game?: GamePackage; onExit?: () => void 
           <header className="completion-header">
             <div className="brand-mark brand-mark-light">
               <span>{game ? "Design learning lab" : "Museum"}</span>
-              <strong>{game ? "Playable Books" : "Misfit Things"}</strong>
+              <strong>{game ? "muses" : "Misfit Things"}</strong>
             </div>
             <div className="completion-header-tools">
               <span className="completion-status">Adventure complete</span>
@@ -1384,7 +1382,7 @@ function GuidedGame({ game, onExit }: { game?: GamePackage; onExit?: () => void 
             }}
           >
             <span>{game ? "Design learning lab" : "Museum"}</span>
-            <strong>{game ? "Playable Books" : "Misfit Things"}</strong>
+            <strong>{game ? "muses" : "Misfit Things"}</strong>
           </button>
           <div className="hud" aria-label="Player status">
             {onExit ? (

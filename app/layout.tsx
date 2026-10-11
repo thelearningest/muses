@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Playable Books",
+  title: "muses",
   description:
     "Turn a design book into a playable practice game with decisions, feedback, and page references.",
   openGraph: {
-    title: "Playable Books",
+    title: "muses",
     description:
       "Turn a design book into a playable practice game with decisions, feedback, and page references.",
     type: "website",

@@ -89,6 +89,20 @@ describe("bounded switchboard consequences", () => {
     expect(oldSave.switchboardChoice).toBeUndefined();
     expect(restoreGameProgress(null, quests, maxXp, true)).toEqual({ version: 1, currentQuest: 0, phase: "inspect", xp: 0, completed: [], principles: [] });
   });
+
+  it("remembers dismissed introductions without awarding a repair", () => {
+    const original = restoreGameProgress(null, quests, maxXp, true);
+    const saved = { ...original, encounters: ["vanishing-instructions"] };
+    expect(restoreGameProgress(JSON.parse(JSON.stringify(saved)), quests, maxXp, true)).toEqual(saved);
+    expect(restoreGameProgress(null, quests, maxXp, true).encounters).toBeUndefined();
+  });
+
+  it("filters invalid introduction history and excludes it from generated games", () => {
+    const saved = { encounters: ["false-handles", "unknown", null, 0, {}, "false-handles"] };
+    expect(restoreGameProgress(saved, quests, maxXp, true).encounters).toEqual(["false-handles"]);
+    expect(restoreGameProgress({ encounters: "false-handles" }, quests, maxXp, true).encounters).toBeUndefined();
+    expect(restoreGameProgress(saved, quests, maxXp, false).encounters).toBeUndefined();
+  });
 });
 
 

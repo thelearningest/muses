@@ -1,11 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { buildExhibit } from "../app/museum/exhibits";
-import { exhibitControls, initialExhibit, reduceExhibit, STOPS, type ExhibitAction, type ExhibitKind, type ExhibitState } from "../app/museum/experiments";
+import { EXHIBIT_INTRODUCTIONS, exhibitControls, initialExhibit, reduceExhibit, STOPS, type ExhibitAction, type ExhibitKind, type ExhibitState } from "../app/museum/experiments";
 
 const run = (kind: ExhibitKind, repaired: boolean, actions: ExhibitAction[], state = initialExhibit(kind)) => actions.reduce((current, action) => reduceExhibit(kind, current, action, repaired), state);
 
 describe("six museum exhibits", () => {
+  it.each(Object.keys(EXHIBIT_INTRODUCTIONS) as ExhibitKind[])("starts the %s introduction with an available action", (kind) => {
+    const state = initialExhibit(kind);
+    const introduction = EXHIBIT_INTRODUCTIONS[kind];
+    const control = exhibitControls(kind, state, false).find((item) => JSON.stringify(item.action) === JSON.stringify(introduction.action));
+    expect(control).toBeDefined();
+    expect(control?.disabled).not.toBe(true);
+    expect(reduceExhibit(kind, state, introduction.action, false)).not.toEqual(state);
+  });
+
   it("gate invites the wrong action before repair but only opens inward when pushed", () => {
     const original = initialExhibit("gate");
     const pulled = run("gate", false, [{ type: "pull" }], original);

@@ -7,7 +7,8 @@ import { IDLE_NARRATION, loadNarrationClips, NarrationPlayer, type NarrationSnap
 export function useNarration(text: string, {
   voice = "cedar",
   onSpeakingChange,
-}: { voice?: NarrationVoice; onSpeakingChange?: (speaking: boolean) => void } = {}) {
+  autoPlay = false,
+}: { voice?: NarrationVoice; onSpeakingChange?: (speaking: boolean) => void; autoPlay?: boolean } = {}) {
   const [snapshot, setSnapshot] = useState<NarrationSnapshot>(IDLE_NARRATION);
   const player = useRef<NarrationPlayer | null>(null);
   const onSpeakingChangeRef = useRef(onSpeakingChange);
@@ -27,9 +28,29 @@ export function useNarration(text: string, {
     // Defer the state publication rather than updating state inside the effect.
     const narrator = player.current;
     let cancelled = false;
-    queueMicrotask(() => { if (!cancelled) narrator?.stop(); });
-    return () => { cancelled = true; narrator?.stop(); };
-  }, [text, voice]);
+    queueMicrotask(() => {
+      if (cancelled) return;
+      narrator?.stop();
+      if (autoPlay) void narrator?.toggle(text, voice);
+    });
+    const retryAutoplay = (event: Event) => {
+      if (!event.isTrusted || !narrator?.needsGesture) return;
+      if (event.target instanceof Element && event.target.closest("button, a, summary, input, select, textarea") &&
+        (!(event instanceof KeyboardEvent) || event.key === "Enter" || event.key === " ")) return;
+      if (event instanceof KeyboardEvent && (event.repeat || event.key === "Escape" || event.ctrlKey || event.metaKey || event.altKey)) return;
+      void narrator.toggle(text, voice);
+    };
+    if (autoPlay) {
+      document.addEventListener("pointerdown", retryAutoplay);
+      document.addEventListener("keydown", retryAutoplay);
+    }
+    return () => {
+      cancelled = true;
+      document.removeEventListener("pointerdown", retryAutoplay);
+      document.removeEventListener("keydown", retryAutoplay);
+      narrator?.stop();
+    };
+  }, [text, voice, autoPlay]);
   useEffect(() => {
     onSpeakingChangeRef.current?.(snapshot.state === "playing");
   }, [snapshot.state]);

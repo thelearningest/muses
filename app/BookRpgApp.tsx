@@ -180,7 +180,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
     setSelected("print-shop");
     requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
   }, []);
-  const prepared = usePreparedBookReplay(openPrintShop);
+  const prepared = usePreparedBookReplay();
   const [hasLiveFile, setHasLiveFile] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [activeJob, setActiveJob] = useState<ResumableBookJob | null>(null);
@@ -409,7 +409,7 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
 
   return (
     <main className="library-shell" aria-busy={!hydrated || isStarting || prepared.checking}>
-      <header className="library-header"><div className="brand-mark"><span>Learn by playing</span><strong>Playable Books</strong></div><a className="library-jump" href="#library-title">Your games ↓</a></header>
+      <header className="library-header"><div className="brand-mark"><span>Learn by playing</span><strong>muses</strong></div></header>
       <section className="library-hero">
         <div><h1>Put your book into practice.</h1><p>Turn its key ideas into quests. Explore a problem, choose a solution, and learn why it works.</p></div>
       </section>
@@ -421,18 +421,17 @@ export function BookRpgApp({ turnstileSiteKey = "" }: { turnstileSiteKey?: strin
             onRetry={() => void retryJob()} onCancel={() => void cancelJob()} /> : (
             <>
               <form onSubmit={createGame}>
-                <label className="file-field"><span>Choose your book</span><input ref={fileRef} type="file" accept="application/pdf,.pdf" disabled={!hydrated || isStarting || prepared.checking} onChange={event => void selectBook(event.target.files?.[0])} required /><small>Select the supplied Robin Williams PDF to open its prepared 3D game after 12 seconds of staged loading.</small><small>For other books: PDF, up to 50 MB · 300 pages maximum. Scans work too.</small></label>
+                <label className="file-field"><span>Choose your book</span><input ref={fileRef} type="file" accept="application/pdf,.pdf" disabled={!hydrated || isStarting || prepared.checking} onChange={event => void selectBook(event.target.files?.[0])} required /><small>Select the supplied Robin Williams PDF to add its prepared 3D game to your library after 12 seconds of staged loading.</small><small>For other books: PDF, up to 50 MB · 300 pages maximum. Scans work too.</small></label>
                 {prepared.checking && <p className="generation-note" role="status">Checking your book…</p>}
                 {hasLiveFile && <><label className="rights-field"><input type="checkbox" checked={rightsConfirmed} onChange={(event) => setRightsConfirmed(event.target.checked)} required /><span>I own this book or have permission to use it.</span></label><Turnstile onToken={setTurnstileToken} siteKey={turnstileSiteKey} /></>}
                 {error && <p className="form-error" role="alert">{error}</p>}
                 {hasLiveFile && <><button className="button button-primary" type="submit" disabled={!hydrated || !rightsConfirmed || !turnstileToken || isStarting || prepared.checking}>{isStarting ? "Uploading your book…" : "Create my game"}<span aria-hidden="true">→</span></button><p className="generation-note">Allow a few minutes. Keep this tab open until your game is ready.</p></>}
               </form>
-              <details className="upload-details"><summary>Upload limits & privacy</summary><p>You can start up to 5 uploads in 24 hours per browser or shared network. The site accepts up to 20 books a day, resetting at midnight UTC.</p><p>Your book is sent to OpenAI for processing. Temporary files are removed within 24 hours; older uploads may also have used Mistral. Your finished games are saved in this browser.</p></details>
+              <details className="upload-details"><summary>Upload limits & privacy</summary><p>You can start up to 5 uploads in 24 hours per browser or shared network. The site accepts up to 20 books a day, resetting at midnight UTC.</p></details>
             </>
           )}
           {activeJob && error && <p className="form-error" role="alert">{error}</p>}
           {prepared.notice && <p className="generation-note" role="status">{prepared.notice}</p>}
-          {!activeJob && !prepared.running && <details className="upload-details"><summary>Prepared demo controls</summary><p>Demo replay using a prepared game. No live generation runs, and the selected fixture stays in this browser.</p><button className="button button-secondary" type="button" disabled={!hydrated || prepared.checking || isStarting} onClick={() => { if (fileRef.current) fileRef.current.value = ""; setHasLiveFile(false); prepared.startPrepared(); }}>Try the prepared book →</button>{prepared.replay && <p><button className="text-button text-button-light" type="button" onClick={resetPrepared}>Reset prepared demo</button></p>}</details>}
         </section>
         <section className="game-library" aria-labelledby="library-title">
           <div className="library-section-heading"><div><h2 id="library-title">Your games</h2><p className="library-hint">{games.length || prepared.progress.complete ? "Saved in this browser. Pick a game to start or continue." : "Your games will appear here. Try the demo while you choose a book."}</p></div></div>

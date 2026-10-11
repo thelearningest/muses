@@ -16,7 +16,7 @@ export function VoicePreview() {
 
   return <main className={styles.page}>
     <div className={styles.content}>
-      <Link className={styles.back} href="/">← Back to Playable Books</Link>
+      <Link className={styles.back} href="/">← Back to muses</Link>
       <p className={styles.eyebrow}>The City of Misfit Things</p>
       <h1>Find the museum’s voice.</h1>
       <p className={styles.intro}>Listen to the same scene with two guides. These are voice samples while the museum is being built.</p>

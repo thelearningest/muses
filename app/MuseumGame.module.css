@@ -4,27 +4,33 @@
 .museum button:disabled { opacity: .45; cursor: default; }
 .museum button:focus-visible, .museum summary:focus-visible { outline: 3px solid #a76f12; outline-offset: 3px; }
 .museum button[aria-pressed="true"] { background: #e1c96b; border-color: #79682b; }
-.hud { position: absolute; top: 18px; left: 22px; right: 22px; display: flex; align-items: center; gap: 26px; color: #faf7e9; pointer-events: none; text-shadow: 0 1px 6px #182219; }
+.hud { position: absolute; top: 18px; left: 22px; right: 22px; display: flex; align-items: center; gap: 26px; padding: 12px 16px; background: #f6f3e9; border: 1px solid #c8c1ad; border-radius: 8px; color: #292c25; pointer-events: none; }
 .brand { display: flex; flex-direction: column; gap: 5px; }
 .brand > span, .objective > span, .panelHeading > span, .goal > span, .stepLabel, .dialogTop > span, .journal article > span { font-size: 10px; font-weight: 700; letter-spacing: .13em; }
-.brand > strong { font-family: Georgia, serif; font-size: 23px; font-weight: 400; }
-.progress { display: flex; flex-direction: column; gap: 4px; border-left: 1px solid #ffffff50; padding-left: 22px; }
+.brand > strong { font-family: Georgia, serif; font-size: 23px; font-weight: 700; }
+.progress { display: flex; flex-direction: column; gap: 4px; border-left: 1px solid #c8c1ad; padding-left: 22px; }
 .progress strong { font-size: 19px; }
-.progress span { font-size: 11px; }
+.progress span { font-size: 11px; font-weight: 600; }
 .hud nav { display: flex; gap: 6px; margin-left: auto; pointer-events: auto; }
 .hud nav button { background: #f8f6edf0; border-color: #e0dcc8; }
-.objective { position: absolute; top: 103px; left: 24px; display: flex; flex-direction: column; gap: 8px; color: #fff9e7; max-width: 340px; text-shadow: 0 1px 6px #162019; pointer-events: none; }
-.objective > strong { font-family: Georgia, serif; font-size: 20px; font-weight: 400; }
+.museum button.musicToggle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; background: transparent; border-color: transparent; }
+.museum button.musicToggle:hover { background: #eee8d6; }
+.objective { position: absolute; top: 122px; left: 24px; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: #f6f3e9; border: 1px solid #c8c1ad; border-radius: 8px; color: #292c25; max-width: 340px; pointer-events: none; }
+.objective > strong { font-family: Georgia, serif; font-size: 20px; font-weight: 700; }
 .interaction { position: absolute; bottom: 82px; right: 22px; width: min(370px, calc(100vw - 44px)); max-height: calc(100dvh - 185px); overflow: auto; padding: 19px; background: #f6f3e9f5; border: 1px solid #d8d2bc; border-radius: 9px; box-shadow: 0 8px 40px #0002; }
 .panelHeading { display: flex; flex-direction: column; gap: 7px; }
-.panelHeading > strong { font-family: Georgia, serif; font-size: 22px; font-weight: 400; }
-.interaction p { font-size: 13px; line-height: 1.55; }
+.panelHeading > strong { font-family: Georgia, serif; font-size: 22px; font-weight: 700; }
+.interaction p { font-size: 13px; font-weight: 600; line-height: 1.55; }
+.interaction .interactionHint { font-size: 12px; font-weight: 400; color: #555947; }
+.moreOptions { margin-top: 14px; border-top: 1px solid #d5cfba; }
+.moreOptions > summary { padding: 14px 0; min-height: 44px; cursor: pointer; font-size: 12px; color: #555947; }
 .experimentButtons { display: flex; gap: 6px; flex-wrap: wrap; }
 .experimentButtons button { flex-grow: 1; font-size: 12px; padding: 9px 10px; }
 .museum .primary { background: #dfc264; border-color: #c8a944; color: #232a20; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 20px; width: 100%; margin-top: 18px; }
 .museum .primary:hover { background: #ead381; }
 .primary kbd { font-family: inherit; font-size: 11px; border: 1px solid #877c4e; border-radius: 3px; padding: 2px 5px; }
-.navigationHint { position: absolute; bottom: 20px; left: 24px; right: 24px; display: flex; align-items: center; gap: 18px; color: #fff9e7; font-size: 12px; text-shadow: 0 1px 5px #172019; }
+.navigationHint { position: absolute; bottom: 20px; left: 24px; right: 24px; display: flex; align-items: center; gap: 18px; color: #292c25; font-size: 12px; font-weight: 700; text-shadow: none; }
+.navigationHint > span { padding: 10px 12px; background: #f6f3e9; border: 1px solid #c8c1ad; border-radius: 5px; }
 .navigationHint button { background: #f5f1e5dd; }
 .dpad { display: none; position: absolute; left: 18px; bottom: 22px; text-align: center; touch-action: none; }
 .dpad > div { display: flex; gap: 5px; margin-top: 5px; }
@@ -34,6 +40,8 @@
 .dialog::backdrop { background: #15201970; backdrop-filter: blur(2px); }
 .exhibitDialog { width: min(470px, calc(100vw - 32px)); margin-right: 22px; }
 .exhibitDialog::backdrop { background: #15201925; backdrop-filter: none; }
+.encounterDialog { width: min(380px, calc(100vw - 32px)); margin-right: 22px; margin-bottom: 82px; }
+.encounterDialog::backdrop { background: #101810b3; backdrop-filter: none; }
 .dialogTop { display: flex; align-items: center; justify-content: space-between; gap: 20px; color: #686a54; }
 .dialogTop button { padding: 0; width: 44px; border-color: transparent; background: transparent; font-size: 25px; }
 .dialog h1 { font: 400 38px/1.1 Georgia, serif; letter-spacing: -.03em; margin: 17px 0 20px; }
@@ -42,7 +50,7 @@
 .dialog .lead { font-size: 16px; }
 .introSteps { display: flex; gap: 14px; padding: 24px 0; margin: 22px 0; border-top: 1px solid #d5cfba; border-bottom: 1px solid #d5cfba; }
 .introSteps > div { flex: 1; display: flex; flex-direction: column; gap: 10px; }
-.introSteps strong { font: 400 28px Georgia, serif; color: #8b742e; }
+.introSteps strong { font: 600 28px/1 Arial, Helvetica, sans-serif; font-variant-numeric: lining-nums tabular-nums; color: #8b742e; }
 .introSteps span { font-size: 12px; line-height: 1.4; }
 .museum .textButton { width: 100%; background: transparent; border-color: transparent; margin-top: 8px; text-decoration: underline; }
 .roomList { display: grid; gap: 8px; margin: 22px 0; }
@@ -69,26 +77,27 @@
 .returnWorld { position: fixed; z-index: 100; bottom: 16px; left: 16px; box-shadow: 0 3px 16px #0002; }
 @media (pointer: coarse) { .dpad { display: block; } .navigationHint { bottom: 18px; left: auto; max-width: 180px; text-align: right; } .navigationHint > span { display: none; } .interaction { bottom: 145px; } }
 @media (max-width: 700px) {
-  .hud { top: 12px; left: 14px; right: 14px; gap: 10px; flex-wrap: wrap; }
+  .hud { top: 12px; left: 14px; right: 14px; gap: 10px; padding: 10px; flex-wrap: wrap; }
   .brand > strong { font-size: 18px; }
   .brand > span { font-size: 8px; }
   .progress { margin-left: auto; padding-left: 12px; }
   .progress span { max-width: 102px; font-size: 10px; }
   .hud nav { margin-left: 0; gap: 5px; }
   .hud nav button { padding: 8px 13px; font-size: 12px; }
-  .objective { top: 133px; left: 16px; max-width: 280px; }
+  .objective { top: 154px; left: 16px; max-width: 280px; }
   .objective > strong { font-size: 18px; }
   .interaction { right: 14px; width: calc(100vw - 28px); max-height: min(42dvh, 360px); padding: 14px; }
   .panelHeading > strong { font-size: 20px; }
   .dialog { padding: 20px; max-height: calc(100dvh - 28px); }
   .dialog h1 { font-size: 31px; }
   .exhibitDialog { margin: auto; }
-  .navigationHint { left: 14px; font-size: 10px; gap: 8px; }
+  .encounterDialog { margin: auto; }
+  .navigationHint { left: 14px; font-size: 12px; gap: 8px; }
   .navigationHint button { font-size: 11px; padding: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { .dialog::backdrop { backdrop-filter: none; } }
 
-.returnGuide { position: absolute; bottom: 88px; left: 24px; display: flex; align-items: center; gap: 12px; padding: 12px; max-width: calc(100% - 48px); background: #f4efdf; color: #29322d; border-radius: 8px; box-shadow: 0 5px 22px #0002; }
+.returnGuide { position: absolute; bottom: 88px; left: 24px; display: flex; align-items: center; gap: 12px; padding: 12px; max-width: calc(100% - 48px); background: #f4efdf; color: #29322d; font-weight: 600; border: 1px solid #c8c1ad; border-radius: 8px; }
 @media (max-width: 700px) { .returnGuide { top: 162px; bottom: auto; left: 12px; max-width: calc(100% - 24px); font-size: 12px; } }
 
 /* After-hours navigation stays quiet so the illuminated exhibits lead the eye. */

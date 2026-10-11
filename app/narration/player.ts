@@ -40,6 +40,7 @@ export class NarrationPlayer {
   private generation = 0;
   private ownsSpeech = false;
   private disposed = false;
+  private autoplayBlocked = false;
   private readonly loadClips;
   private readonly createAudio;
   private readonly speech;
@@ -57,8 +58,11 @@ export class NarrationPlayer {
     if (!this.disposed) this.options.onChange(this.snapshot);
   }
 
+  get needsGesture() { return this.autoplayBlocked; }
+
   stop() {
     ++this.generation;
+    this.autoplayBlocked = false;
     if (this.audio) {
       this.audio.onended = this.audio.onerror = null;
       this.audio.pause();
@@ -120,10 +124,13 @@ export class NarrationPlayer {
       };
       await audio.play();
       if (generation === this.generation) this.publish("playing", "openai");
-    } catch {
+    } catch (error) {
       if (generation !== this.generation) return;
       this.stop();
-      this.publish("idle", null, "Audio could not play. Press Play to try again.");
+      this.autoplayBlocked = error instanceof Error && error.name === "NotAllowedError";
+      this.publish("idle", null, this.autoplayBlocked
+        ? "Click or press a key to start the audio, or press Play narration."
+        : "Audio could not play. Press Play to try again.");
     }
   }
 

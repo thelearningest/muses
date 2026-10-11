@@ -15,6 +15,14 @@ export type ExhibitAction =
   | { type: "reset" | "push" | "pull" | "close" | "start" | "hide" | "interrupt" | "resume" | "restore" | "delete" | "confirm" | "cancel" | "undo" | "wrong-turn" | "return" | "help" }
   | { type: "toggle" | "step" | "select" | "place" | "stop"; index: number };
 export type ExhibitControl = { label: string; action: ExhibitAction; disabled?: boolean; pressed?: boolean };
+export const EXHIBIT_INTRODUCTIONS: Record<ExhibitKind, { title: string; instruction: string; label: string; action: ExhibitAction }> = {
+  gate: { title: "Try the gate", instruction: "Try the handle and watch what happens.", label: "Pull the handle", action: { type: "pull" } },
+  switchboard: { title: "Try a switch", instruction: "Press a switch and watch the ceiling lamps.", label: "Press switch 1", action: { type: "toggle", index: 0 } },
+  memory: { title: "Try storing a parcel", instruction: "Start the locker and watch its instructions.", label: "Start parcel", action: { type: "start" } },
+  constraints: { title: "Try fitting a piece", instruction: "Pick up the circle, then click an opening on the machine.", label: "Pick up the circle", action: { type: "select", index: 0 } },
+  console: { title: "Try restoring the archive", instruction: "Restore the archive, then explore the console’s controls.", label: "Restore archive", action: { type: "restore" } },
+  kiosk: { title: "Plan a museum visit", instruction: "Choose a stop, then try changing the route on the kiosk.", label: "Choose the gate", action: { type: "stop", index: 0 } },
+};
 const TASKS: Record<ExhibitKind, string> = {
   gate: "Try the gate. Which action does its hardware suggest?",
   switchboard: "Choose a lamp, then try the switches. Which one controls it?",
