@@ -1,0 +1,30 @@
+/* Proposed Playable Books tokens. These are not imported by the application. */
+:root {
+  --pb-canvas: #f7f5ef;
+  --pb-surface: #fffefa;
+  --pb-ink: #262823;
+  --pb-muted: #68645e;
+  --pb-rule: #dedcd4;
+  --pb-control-border: #8c8a82;
+  --pb-accent: #34594a;
+  --pb-accent-hover: #284538;
+  --pb-accent-soft: #e8eee8;
+  --pb-error: #943d35;
+  --pb-error-soft: #f8ece8;
+  --pb-serif: Georgia, "Times New Roman", serif;
+  --pb-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --pb-space-1: 4px;
+  --pb-space-2: 8px;
+  --pb-space-3: 12px;
+  --pb-space-4: 16px;
+  --pb-space-6: 24px;
+  --pb-space-8: 32px;
+  --pb-space-12: 48px;
+  --pb-space-16: 64px;
+  --pb-radius-control: 10px;
+  --pb-radius-panel: 16px;
+  --pb-radius-cover: 4px;
+  --pb-content-width: 1120px;
+  --pb-focus: 2px solid var(--pb-accent);
+  --pb-transition: 150ms ease;
+}

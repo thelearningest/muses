@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playable Books · Design reference</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="board.css">
+</head>
+<body>
+  <main class="board">
+    <header class="header"><a class="wordmark" href="#top">Playable Books</a><a href="#references">Source references</a></header>
+    <section class="intro" id="top">
+      <span class="label">Design reference · 11 October 2026</span>
+      <h1>A personal library,<br>made for practice.</h1>
+      <p>Warm paper, serif headings, and space for the books. Original component samples informed by Apple Books and Literal.</p>
+    </section>
+
+    <section class="section" aria-labelledby="composition-title">
+      <h2 id="composition-title">Library and upload composition</h2>
+      <div class="layout">
+        <div class="library-samples">
+          <article class="surface continue" aria-labelledby="continue-title">
+            <div class="cover" aria-hidden="true"><strong>The City of Misfit Things</strong><span>Playable Books demo</span></div>
+            <div class="continue-copy">
+              <span class="label">Continue · illustrative state</span>
+              <h3 id="continue-title">The City of Misfit Things</h3>
+              <p class="meta">Example progress: 2 of 6 quests completed</p>
+              <progress class="progress" value="2" max="6" aria-label="Sample game progress: 2 of 6 quests completed"></progress>
+              <button type="button" class="button primary" aria-label="Continue game, visual sample only">Continue game <span aria-hidden="true">→</span></button>
+            </div>
+          </article>
+          <p class="meta">Continue requires a future connection to validated saved progress. This is a static example.</p>
+          <article class="row" aria-labelledby="demo-title">
+            <div class="cover" aria-hidden="true"><strong>The City of Misfit Things</strong></div>
+            <div class="row-copy"><h3 id="demo-title">The City of Misfit Things</h3><p class="meta">Demo · 6 quests · No upload needed</p><a href="#control-samples">Try the demo <span aria-hidden="true">&nbsp;→</span></a></div>
+          </article>
+        </div>
+        <aside class="surface upload" aria-labelledby="upload-title">
+          <h3 id="upload-title">Start with a PDF</h3>
+          <label class="file-field"><span>Choose your book</span><input type="file" accept="application/pdf,.pdf" aria-describedby="file-help"><small class="meta" id="file-help">PDF, up to 50 MB · 300 pages maximum. Scans work too.</small></label>
+          <label class="rights"><input type="checkbox"><span>I own this book or have permission to use it.</span></label>
+          <p class="meta">The application keeps its verification widget here. This board does not run verification or send files.</p>
+          <button type="button" class="button wide" disabled>Create my game</button>
+          <p class="meta">Static component sample. Generation is disabled.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="palette-title">
+      <h2 id="palette-title">Color and controls</h2>
+      <div class="swatches">
+        <div class="swatch" style="--swatch:#f7f5ef"><strong>Paper</strong><p class="meta">#F7F5EF</p></div>
+        <div class="swatch" style="--swatch:#262823"><strong>Ink</strong><p class="meta">#262823</p></div>
+        <div class="swatch" style="--swatch:#34594a"><strong>Action</strong><p class="meta">#34594A</p></div>
+        <div class="swatch" style="--swatch:#dedcd4"><strong>Divider</strong><p class="meta">#DEDCD4</p></div>
+      </div>
+      <p class="meta" id="control-samples" style="margin:24px 0 12px">Visual control samples. Buttons do not start product actions.</p>
+      <div class="controls"><button class="button primary" type="button">Open game</button><button class="button secondary" type="button">Choose another book</button><button class="button" type="button" disabled>Uploading your book…</button></div>
+    </section>
+
+    <section class="section" aria-labelledby="state-title">
+      <h2 id="state-title">Progress and recovery states</h2>
+      <div class="states">
+        <article class="surface"><span class="label">Active · sample</span><h3>Reading your book</h3><p class="meta">example-book.pdf</p><ol class="steps"><li class="done">✓ Upload completed</li><li class="current">2. Read your book</li><li>3. Create quests</li><li>4. Check answers</li></ol><progress class="progress" value="42" max="100" aria-label="Sample generation progress: 42 percent overall"></progress><p class="meta">Example: 42% overall</p></article>
+        <article class="surface"><span class="label">Paused · sample</span><h3>Let's pick up where we left off</h3><p class="meta">Your completed steps are saved. Resume to continue from here.</p><button type="button" class="button secondary">Resume book reading</button></article>
+        <article class="surface"><span class="label">Empty library · sample</span><h3>Your first game starts with a book.</h3><p class="meta">Your games will appear here. Try the demo while you choose a book.</p><button type="button" class="button secondary">Try the demo</button></article>
+        <article class="surface error"><span class="meta">Error · sample</span><h3>This file is too large.</h3><p class="meta">Choose a PDF smaller than 50 MB.</p><button type="button" class="button secondary">Choose another PDF</button></article>
+      </div>
+    </section>
+
+    <section class="section" id="references" aria-labelledby="references-title">
+      <h2 id="references-title">Selected Mobbin references</h2>
+      <div class="references">
+        <figure><div class="reference-image"><img src="images/apple-books-home.webp" alt="Apple Books iOS home with serif headings, a Continue card, and large book covers" loading="lazy"></div><figcaption><a href="https://mobbin.com/screens/fa54930d-72ec-44e1-b65d-f8b50aa6e173">Apple Books · iOS</a><p>Main reference for typography and cover emphasis.</p></figcaption></figure>
+        <figure><div class="reference-image"><img src="images/literal-home.webp" alt="Literal web home with a reading list, light navigation, and an open account menu" loading="lazy"></div><figcaption><a href="https://mobbin.com/screens/dd0731b7-2410-4bd2-9623-b0cc0c60ee89">Literal · Web</a><p>Main reference for desktop spacing and thin separators. The open menu is not part of the proposed scope.</p></figcaption></figure>
+        <figure><div class="reference-image"><img src="images/headway-library.webp" alt="Headway iOS Productivity category showing a two-column book cover grid" loading="lazy"></div><figcaption><a href="https://mobbin.com/screens/b1782664-c1ad-4ea0-a4f6-204cabb222e7">Headway · iOS</a><p>Supporting reference for the warm canvas and cover grid.</p></figcaption></figure>
+        <figure><div class="reference-image"><img src="images/speechify-library.webp" alt="Speechify iOS library with document thumbnails and progress metadata" loading="lazy"></div><figcaption><a href="https://mobbin.com/screens/1e0a8afe-8e6d-4655-abfb-a9528eafc47f">Speechify · iOS</a><p>Supporting reference for compact PDF and book rows.</p></figcaption></figure>
+      </div>
+    </section>
+    <footer class="footer meta">Reference board only. Application code is unchanged. <a href="README.md">Folder guide</a> · <a href="DESIGN_LANGUAGE.md">Design language</a> · <a href="COMPONENTS.md">Component specification</a></footer>
+  </main>
+</body>
+</html>
