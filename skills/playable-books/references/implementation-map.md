@@ -22,6 +22,16 @@ This map reflects source inspection on 2026-10-11. Paths are relative to the Pla
 
 `Game` without a package opens the museum and supplies a guided alternative. `Game` with a `GamePackage` opens the generated guided player. The museum has fixed galleries, a fixed save key, and book-specific narration. Passing new quest text alone does not create a second museum.
 
+`buildMuseum(scene, identity)` now accepts optional title, subtitle, welcome, and
+gallery names. Its defaults preserve Misfit Things. The room geometry and six
+gallery positions remain fixed; the option customises the shared template's signs.
+
+`app/print-shop/` reuses that architecture and `MuseumWalker`, with five original
+prints, a shared layout model for 3D and guided proofs, separate saves, and the
+existing `MuseumNarration` player. `app/demo/` provides the isolated, exact-PDF
+fixture replay: one file selection, 12 seconds of staged loading, then automatic
+game opening. It does not extend the real generated `GamePackage` capability.
+
 ## Package and storage contracts
 
 `app/game-package.ts` defines `GameContent`, `GamePackage`, `Quest`, `VisualSpec`, and runtime parsers.

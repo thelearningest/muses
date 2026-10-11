@@ -33,6 +33,8 @@ Build one representative playable quest before expanding the whole game. The pla
 
 ## Reuse implementation patterns
 
+**Reuse first.** Inventory the previous game's templates, working components, assets, and state before creating replacements. Read [the reuse checklist](references/reuse-first.md). Use its existing 3D architecture, movement, narration, dialog, experiment, and progress patterns where they fit. Treat the previous project as the starting implementation, not merely inspiration. Add only the book-specific content and interactions that the existing pieces cannot express.
+
 Read [the implementation map](references/implementation-map.md) before reusing the existing app. Locate the repository from the task context. The original checkout is `/Users/nguyenminhtriet/Documents/Codex/2026-07-11/s`.
 
 Reuse state transitions, shared actions for model and HTML controls, accessible guided play, a journal, isolated saves, and narration lifecycle handling where they fit. Replace book-specific geometry, wording, progress identifiers, and audio.
@@ -44,6 +46,8 @@ The handcrafted museum and generated-image player have different capabilities. C
 Read [the demo replay workflow](references/demo-replay.md) only when the user requests a presentation or simulated creation process.
 
 Keep replay selection and progress separate from real job creation. Use a prebuilt, source-reviewed game for the chosen book. Explain the source-to-game process with concrete examples after the game is revealed. Do not present staged timings or manually authored mechanics as measured live generation results.
+
+For a two-minute presentation, prefer one upload action, about 12 seconds of staged loading, and automatic opening of the prepared game. Prepare and load reusable templates ahead of the demonstration. Do not build a world from scratch during the presentation. Keep the replay duration configurable and confirm the first interaction fits the presentation window.
 
 ## Verify and hand off
 

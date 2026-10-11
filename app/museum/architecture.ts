@@ -54,7 +54,7 @@ export function getMuseumColliders(): MuseumCollider[] {
   return solids().filter((solid) => !solid.walkable).map(({ x, z, width, depth }) => ({ minX: x - width / 2, maxX: x + width / 2, minZ: z - depth / 2, maxZ: z + depth / 2 }));
 }
 
-export function buildMuseum(scene: THREE.Scene) {
+export function buildMuseum(scene: THREE.Scene, identity: { title?: string; subtitle?: string; welcome?: string; galleryNames?: string[] } = {}) {
   const root = new THREE.Group();
   root.name = "Museum architecture";
   scene.add(root);
@@ -131,8 +131,8 @@ export function buildMuseum(scene: THREE.Scene) {
     root.add(mesh);
   };
 
-  sign("CITY OF MISFIT THINGS", "SIX ROOMS. SIX THINGS TO PUT RIGHT.", 6.8, 1.6, 0, 3.6, -38.79);
-  sign("Welcome to the museum", "WALK IN · LOOK CLOSELY · TRY THINGS", 6.6, 1.5, 0, 3.7, 11.79, Math.PI);
+  sign(identity.title ?? "CITY OF MISFIT THINGS", identity.subtitle ?? "SIX ROOMS. SIX THINGS TO PUT RIGHT.", 6.8, 1.6, 0, 3.6, -38.79);
+  sign(identity.welcome ?? "Welcome to the museum", "WALK IN · LOOK CLOSELY · TRY THINGS", 6.6, 1.5, 0, 3.7, 11.79, Math.PI);
   const completionLights: THREE.MeshStandardMaterial[] = [];
   for (const gallery of GALLERIES) {
     const side = gallery.position[0] < 0 ? -1 : 1;
@@ -142,8 +142,8 @@ export function buildMuseum(scene: THREE.Scene) {
     box(side * 4, 5.4, z, 0.24, 2, 4.6, plaster);
     for (const edge of [-2.31, 2.31]) box(side * 4, 2.2, z + edge, 0.28, 4.4, 0.045, brass);
     box(side * 4, 4.39, z, 0.28, 0.055, 4.65, brass);
-    sign(`${String(gallery.index + 1).padStart(2, "0")}   ${gallery.name}`, "ENTER & EXPERIMENT", 4.15, 0.8, side * 3.86, 4.95, z, inward);
-    sign(gallery.name, "AN EXHIBIT YOU CAN CHANGE", 4.8, 1.15, side * 14.79, 4.8, z, inward);
+    sign(`${String(gallery.index + 1).padStart(2, "0")}   ${identity.galleryNames?.[gallery.index] ?? gallery.name}`, "ENTER & EXPERIMENT", 4.15, 0.8, side * 3.86, 4.95, z, inward);
+    sign(identity.galleryNames?.[gallery.index] ?? gallery.name, "AN EXHIBIT YOU CAN CHANGE", 4.8, 1.15, side * 14.79, 4.8, z, inward);
     box(side * 8.8, 6.32, z, 5.5, 0.045, 0.25, white);
     const lamp = new THREE.PointLight("#ffe7be", 26, 13, 2);
     lamp.position.set(side * 9, 4.5, z);

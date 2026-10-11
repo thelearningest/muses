@@ -14,6 +14,12 @@ Keep the real job client and server quotas outside replay execution. Simulated u
 
 ## Stage the presentation
 
+For a two-minute demo, select the PDF with one upload action, show about 12 seconds
+of staged progress, then open the prepared game automatically. Keep templates and
+assets ready beforehand. The short replay is presentation timing, not a generation
+benchmark. Use `app/demo/replay.ts` for the prepared path; never invoke the real
+paid job client to imitate loading.
+
 1. Introduce the product as a book-to-game generator and show The City of Misfit Things as the first example.
 2. Select the second book and start its demo replay.
 3. Play one complete Misfit experiment while the second-book progress advances.
