@@ -1,0 +1,4 @@
+interface:
+  display_name: "Playable Books"
+  short_description: "Turn design books into games and prepared generator demos"
+  default_prompt: "Use $playable-books to adapt my supplied design book into a distinct playable learning game using the City of Misfit Things workflow."
